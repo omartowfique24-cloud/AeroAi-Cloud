@@ -668,29 +668,32 @@ if REMOTE_ACCESS_AVAILABLE:
         else:
             return jsonify({"status": "success", "reply": f"Command '{query}' executed successfully."})
 
-    def run_flask_server():
-        app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False)
-
-    threading.Thread(target=run_flask_server, daemon=True).start()
-
 # ============================================================
-# MAIN APPLICATION EXECUTION
+# MAIN APPLICATION EXECUTION (SMART DUAL ENVIRONMENT)
 # ============================================================
 
 if __name__ == "__main__":
-    qt_app = QApplication(sys.argv)
-    
-    voice_thread = threading.Thread(target=voice_listener_loop, daemon=True)
-    voice_thread.start()
-
-    hud = HologramHUD()
-    hud.show()
-    
-    speak("Stark holographic HUD initialized, Omar sir.")
-    
-    sys.exit(qt_app.exec_())
-if __name__ == '__main__':
-    app.run(debug=True)
-    import os
     port = int(os.environ.get("PORT", 10000))
-    app.run(host='0.0.0.0', port=port)
+    
+    # যদি এটি ক্লাউড সার্ভারে (Render) রান হয়, তবে ফ্লাস্ক সার্ভার চালু হবে
+    if os.environ.get("RENDER") or not sys.stdin.isatty():
+        print(f"Starting Aero AI Cloud Web Server on port {port}...")
+        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    else:
+        # লোকাল কম্পিউটারে রান করলে PyQt HUD ও ভয়েস লিসেনার সহ পুরো ডেক্সটপ অ্যাপ চলবে
+        try:
+            qt_app = QApplication(sys.argv)
+            
+            voice_thread = threading.Thread(target=voice_listener_loop, daemon=True)
+            voice_thread.start()
+
+            hud = HologramHUD()
+            hud.show()
+            
+            speak("Stark holographic HUD initialized, Omar sir.")
+            
+            sys.exit(qt_app.exec_())
+        except Exception as e:
+            print(f"Local GUI fallback to Web Server: {e}")
+            if REMOTE_ACCESS_AVAILABLE:
+                app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
