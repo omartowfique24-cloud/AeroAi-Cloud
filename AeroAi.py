@@ -11,9 +11,15 @@ import time
 import webbrowser
 from gtts import gTTS
 import ollama
-import pyautogui
-import pygame
-import speech_recognition as sr
+
+# Safe Desktop Libraries Import (Won't crash on Cloud)
+try:
+    import pyautogui
+    import pygame
+    import speech_recognition as sr
+    DESKTOP_LIBS_AVAILABLE = True
+except ImportError:
+    DESKTOP_LIBS_AVAILABLE = False
 
 # Flask Import for Remote Web Interface
 try:
@@ -36,17 +42,21 @@ except Exception:
     pass
 
 # ------------------------------------------------------------
-# PYQT5 IMPORTS
+# PYQT5 IMPORTS (Safe for Cloud)
 # ------------------------------------------------------------
-from PyQt5.QtCore import QObject, Qt, pyqtSignal, QPoint, QTimer
-from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QBrush
-from PyQt5.QtWidgets import (
-    QApplication,
-    QLabel,
-    QMainWindow,
-    QVBoxLayout,
-    QWidget,
-)
+try:
+    from PyQt5.QtCore import QObject, Qt, pyqtSignal, QPoint, QTimer
+    from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QBrush
+    from PyQt5.QtWidgets import (
+        QApplication,
+        QLabel,
+        QMainWindow,
+        QVBoxLayout,
+        QWidget,
+    )
+    PYQT_AVAILABLE = True
+except ImportError:
+    PYQT_AVAILABLE = False
 
 # ============================================================
 # CONFIGURATION
@@ -71,25 +81,37 @@ last_command_text = ""
 last_command_time = 0.0
 
 # ============================================================
-# COMMUNICATION SIGNALS
+# COMMUNICATION SIGNALS (FIXED)
 # ============================================================
 
-class HUDComm(QObject):
-    update_status = pyqtSignal(str)
-    update_subtitle = pyqtSignal(str)
+class HUDComm(QObject if PYQT_AVAILABLE else object):
+    if PYQT_AVAILABLE:
+        update_status = pyqtSignal(str)
+        update_subtitle = pyqtSignal(str)
+
+    def __init__(self):
+        if PYQT_AVAILABLE:
+            super().__init__()
+        else:
+            self.status_text = ""
+            self.sub_text = ""
 
 comm = HUDComm()
+if not PYQT_AVAILABLE:
+    comm.update_status = type('obj', (object,), {'emit': lambda self, x: None})()
+    comm.update_subtitle = type('obj', (object,), {'emit': lambda self, x: None})()
 
 # ============================================================
 # INITIALIZE AUDIO
 # ============================================================
 
-try:
-    pygame.mixer.init()
-    AUDIO_READY = True
-except Exception as e:
-    print(f"Audio initialization error: {e}")
-    AUDIO_READY = False
+AUDIO_READY = False
+if DESKTOP_LIBS_AVAILABLE:
+    try:
+        pygame.mixer.init()
+        AUDIO_READY = True
+    except Exception as e:
+        print(f"Audio initialization error: {e}")
 
 # ============================================================
 # TEXT / SPEECH HELPERS (FAST BACKGROUND TTS)
@@ -147,7 +169,8 @@ def speak(text):
     text = str(text).strip()
     print(f"AERO AI: {text}")
     comm.update_subtitle.emit(f"AERO AI: {text}")
-    threading.Thread(target=speak_background, args=(text,), daemon=True).start()
+    if AUDIO_READY:
+        threading.Thread(target=speak_background, args=(text,), daemon=True).start()
 
 # ============================================================
 # WEBSITE OPENING FUNCTION
@@ -184,7 +207,8 @@ def open_website(query):
     matched = False
     for key, url in websites.items():
         if key in query:
-            webbrowser.open(url)
+            if DESKTOP_LIBS_AVAILABLE:
+                webbrowser.open(url)
             speak(f"Opening {key}, sir.")
             matched = True
             break
@@ -195,6 +219,9 @@ def open_website(query):
 # ============================================================
 
 def control_laptop(query_text):
+    if not DESKTOP_LIBS_AVAILABLE:
+        return False
+
     low_q = query_text.lower().strip()
     user_profile = os.environ.get("USERPROFILE", os.path.expanduser("~"))
 
@@ -357,11 +384,9 @@ def is_duplicate_command(query):
         last_command_time = now
     return False
 
-# ============================================================
-# VOICE LISTENER THREAD
-# ============================================================
-
 def voice_listener_loop():
+    if not DESKTOP_LIBS_AVAILABLE:
+        return
     recognizer = sr.Recognizer()
     recognizer.energy_threshold = 300
     recognizer.dynamic_energy_threshold = True
@@ -415,106 +440,107 @@ def voice_listener_loop():
 # STARK INDUSTRIES / JARVIS HOLOGRAM HUD GUI (PyQt5)
 # ============================================================
 
-class HologramHUD(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.setGeometry(100, 100, 420, 420)
+if PYQT_AVAILABLE:
+    class HologramHUD(QMainWindow):
+        def __init__(self):
+            super().__init__()
+            self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+            self.setAttribute(Qt.WA_TranslucentBackground)
+            self.setGeometry(100, 100, 420, 420)
 
-        self.angle = 0
-        self.status_text = "STARK HUD // ONLINE"
-        self.sub_text = "Aero is ready, Omar sir."
+            self.angle = 0
+            self.status_text = "STARK HUD // ONLINE"
+            self.sub_text = "Aero is ready, Omar sir."
 
-        self.timer = QTimer(self)
-        self.timer.timeout.connect(self.update_animation)
-        self.timer.start(30)
+            self.timer = QTimer(self)
+            self.timer.timeout.connect(self.update_animation)
+            self.timer.start(30)
 
-        comm.update_status.connect(self.set_status)
-        comm.update_subtitle.connect(self.set_subtitle)
+            comm.update_status.connect(self.set_status)
+            comm.update_subtitle.connect(self.set_subtitle)
 
-        self.drag_position = QPoint()
+            self.drag_position = QPoint()
 
-    def update_animation(self):
-        self.angle = (self.angle + 2) % 360
-        self.update()
+        def update_animation(self):
+            self.angle = (self.angle + 2) % 360
+            self.update()
 
-    def set_status(self, txt):
-        self.status_text = txt
-        self.update()
+        def set_status(self, txt):
+            self.status_text = txt
+            self.update()
 
-    def set_subtitle(self, txt):
-        self.sub_text = txt
-        self.update()
+        def set_subtitle(self, txt):
+            self.sub_text = txt
+            self.update()
 
-    def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
-            self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
-            event.accept()
+        def mousePressEvent(self, event):
+            if event.button() == Qt.LeftButton:
+                self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
+                event.accept()
 
-    def mouseMoveEvent(self, event):
-        if event.buttons() == Qt.LeftButton:
-            self.move(event.globalPos() - self.drag_position)
-            event.accept()
+        def mouseMoveEvent(self, event):
+            if event.buttons() == Qt.LeftButton:
+                self.move(event.globalPos() - self.drag_position)
+                event.accept()
 
-    def paintEvent(self, event):
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        def paintEvent(self, event):
+            painter = QPainter(self)
+            painter.setRenderHint(QPainter.Antialiasing)
 
-        width = self.width()
-        height = self.height()
-        center = QPoint(width // 2, height // 2)
+            width = self.width()
+            height = self.height()
+            center = QPoint(width // 2, height // 2)
 
-        painter.setPen(QPen(QColor(0, 240, 255, 120), 2, Qt.DashLine))
-        painter.setBrush(Qt.NoBrush)
-        painter.drawEllipse(center, 190, 190)
+            painter.setPen(QPen(QColor(0, 240, 255, 120), 2, Qt.DashLine))
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(center, 190, 190)
 
-        painter.save()
-        painter.translate(center)
-        painter.rotate(self.angle)
-        painter.setPen(QPen(QColor(0, 255, 150, 180), 3, Qt.SolidLine))
-        painter.drawArc(-160, -160, 320, 320, 45 * 16, 120 * 16)
-        painter.drawArc(-160, -160, 320, 320, 225 * 16, 90 * 16)
-        painter.restore()
+            painter.save()
+            painter.translate(center)
+            painter.rotate(self.angle)
+            painter.setPen(QPen(QColor(0, 255, 150, 180), 3, Qt.SolidLine))
+            painter.drawArc(-160, -160, 320, 320, 45 * 16, 120 * 16)
+            painter.drawArc(-160, -160, 320, 320, 225 * 16, 90 * 16)
+            painter.restore()
 
-        painter.save()
-        painter.translate(center)
-        painter.rotate(-self.angle * 1.5)
-        painter.setPen(QPen(QColor(0, 240, 255, 200), 2, Qt.DotLine))
-        painter.drawEllipse(-120, -120, 240, 240)
-        painter.restore()
+            painter.save()
+            painter.translate(center)
+            painter.rotate(-self.angle * 1.5)
+            painter.setPen(QPen(QColor(0, 240, 255, 200), 2, Qt.DotLine))
+            painter.drawEllipse(-120, -120, 240, 240)
+            painter.restore()
 
-        core_brush = QBrush(QColor(0, 240, 255, 30))
-        painter.setBrush(core_brush)
-        painter.setPen(QPen(QColor(0, 240, 255, 220), 2))
-        painter.drawEllipse(center, 80, 80)
+            core_brush = QBrush(QColor(0, 240, 255, 30))
+            painter.setBrush(core_brush)
+            painter.setPen(QPen(QColor(0, 240, 255, 220), 2))
+            painter.drawEllipse(center, 80, 80)
 
-        painter.setPen(QColor(0, 240, 255))
-        painter.setFont(QFont("Consolas", 9, QFont.Bold))
-        painter.drawText(center.x() - 55, center.y() - 25, "STARK EXPO")
-        
-        painter.setPen(QColor(57, 255, 20))
-        painter.setFont(QFont("Consolas", 8))
-        painter.drawText(center.x() - 45, center.y() - 5, "AERO AI")
+            painter.setPen(QColor(0, 240, 255))
+            painter.setFont(QFont("Consolas", 9, QFont.Bold))
+            painter.drawText(center.x() - 55, center.y() - 25, "STARK EXPO")
+            
+            painter.setPen(QColor(57, 255, 20))
+            painter.setFont(QFont("Consolas", 8))
+            painter.drawText(center.x() - 45, center.y() - 5, "AERO AI")
 
-        current_time = datetime.datetime.now().strftime("%H:%M:%S")
-        painter.setPen(QColor(255, 255, 255))
-        painter.setFont(QFont("Consolas", 10, QFont.Bold))
-        painter.drawText(center.x() - 38, center.y() + 20, current_time)
+            current_time = datetime.datetime.now().strftime("%H:%M:%S")
+            painter.setPen(QColor(255, 255, 255))
+            painter.setFont(QFont("Consolas", 10, QFont.Bold))
+            painter.drawText(center.x() - 38, center.y() + 20, current_time)
 
-        painter.setPen(QColor(0, 240, 255))
-        painter.setFont(QFont("Consolas", 9))
-        painter.drawText(20, height - 45, f">> {self.status_text}")
+            painter.setPen(QColor(0, 240, 255))
+            painter.setFont(QFont("Consolas", 9))
+            painter.drawText(20, height - 45, f">> {self.status_text}")
 
-        painter.setPen(QColor(255, 255, 255))
-        painter.setFont(QFont("Segoe UI", 9))
-        painter.setBrush(QBrush(QColor(5, 15, 30, 200)))
-        painter.setPen(QPen(QColor(0, 240, 255, 100), 1))
-        painter.drawRoundedRect(15, height - 35, width - 30, 30, 6, 6)
-        painter.drawText(25, height - 15, self.sub_text[:50])
+            painter.setPen(QColor(255, 255, 255))
+            painter.setFont(QFont("Segoe UI", 9))
+            painter.setBrush(QBrush(QColor(5, 15, 30, 200)))
+            painter.setPen(QPen(QColor(0, 240, 255, 100), 1))
+            painter.drawRoundedRect(15, height - 35, width - 30, 30, 6, 6)
+            painter.drawText(25, height - 15, self.sub_text[:50])
 
 # ============================================================
-# MOBILE WEB CONTROL & INTERFACE (FLASK) WITH WEB VOICE
+# MOBILE WEB CONTROL & INTERFACE (FLASK) WITH WEB VOICE & TYPING BOX
 # ============================================================
 
 HTML_INTERFACE = """<!DOCTYPE html>
@@ -668,20 +694,26 @@ if REMOTE_ACCESS_AVAILABLE:
         else:
             return jsonify({"status": "success", "reply": f"Command '{query}' executed successfully."})
 
+def run_flask_server(port):
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
 # ============================================================
-# MAIN APPLICATION EXECUTION (SMART DUAL ENVIRONMENT)
+# MAIN APPLICATION EXECUTION
 # ============================================================
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     
-    # যদি এটি ক্লাউড সার্ভারে (Render) রান হয়, তবে ফ্লাস্ক সার্ভার চালু হবে
     if os.environ.get("RENDER") or not sys.stdin.isatty():
         print(f"Starting Aero AI Cloud Web Server on port {port}...")
         app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
     else:
-        # লোকাল কম্পিউটারে রান করলে PyQt HUD ও ভয়েস লিসেনার সহ পুরো ডেক্সটপ অ্যাপ চলবে
-        try:
+        if REMOTE_ACCESS_AVAILABLE:
+            flask_thread = threading.Thread(target=run_flask_server, args=(port,), daemon=True)
+            flask_thread.start()
+            print(f"Flask Web Interface available at: http://127.0.0.1:{port}")
+
+        if PYQT_AVAILABLE:
             qt_app = QApplication(sys.argv)
             
             voice_thread = threading.Thread(target=voice_listener_loop, daemon=True)
@@ -693,7 +725,6 @@ if __name__ == "__main__":
             speak("Stark holographic HUD initialized, Omar sir.")
             
             sys.exit(qt_app.exec_())
-        except Exception as e:
-            print(f"Local GUI fallback to Web Server: {e}")
-            if REMOTE_ACCESS_AVAILABLE:
-                app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+        else:
+            print("Running in console web-server mode.")
+            run_flask_server(port)
