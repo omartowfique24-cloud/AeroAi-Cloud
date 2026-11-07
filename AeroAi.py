@@ -12,8 +12,8 @@ import webbrowser
 from gtts import gTTS
 import ollama
 
-# New Google GenAI Import (Official SDK for Cloud Execution)
-from google import genai
+# Google Gemini API Import (Stable Legacy SDK for Cloud Execution)
+import google.generativeai as genai
 
 # Safe Desktop Libraries Import (Won't crash on Cloud)
 try:
@@ -73,30 +73,32 @@ VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
 
 # ============================================================
-# UNIFIED AI BRAIN (Gemini GenAI SDK for Cloud, Ollama for Local)
+# UNIFIED AI BRAIN (Gemini Legacy SDK for Cloud, Ollama for Local)
 # ============================================================
 
 def ask_ai_brain(prompt, system_prompt=""):
     """
-    Uses the latest official Google GenAI SDK for Cloud execution,
-    with automatic fallback to local Ollama.
+    Uses Google GenerativeAI Legacy SDK with robust fallback for Cloud execution.
     """
     # 1. If Gemini API Key exists (Render Cloud)
     if GEMINI_API_KEY:
         try:
-            client = genai.Client(api_key=GEMINI_API_KEY)
-            full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
+            genai.configure(api_key=GEMINI_API_KEY)
             
-            # Using the stable lightweight model for the new SDK
-            response = client.models.generate_content(
-                model='gemini-2.0-flash',
-                contents=full_prompt,
-            )
-            if response and response.text:
-                return response.text
-            return "Sorry Omar sir, empty response from Gemini cloud."
+            # Trying stable legacy models sequentially
+            for model_name in ["gemini-1.5-flash", "gemini-pro"]:
+                try:
+                    model = genai.GenerativeModel(model_name)
+                    full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
+                    response = model.generate_content(full_prompt)
+                    if response and response.text:
+                        return response.text
+                except Exception:
+                    continue
+                    
+            return "Sorry Omar sir, all Gemini cloud models failed to respond."
         except Exception as e:
-            print(f"GenAI SDK Error: {e}")
+            print(f"Gemini API Error: {e}")
             return f"Gemini Error: {str(e)}"
             
     # 2. Otherwise use local Ollama (Laptop)
