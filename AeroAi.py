@@ -86,7 +86,7 @@ def ask_ai_brain(prompt, system_prompt=""):
         try:
             genai.configure(api_key=GEMINI_API_KEY)
             # Using gemini-pro for stable legacy SDK compatibility on Render Cloud
-            model = genai.GenerativeModel("gemini-pro")
+            model = genai.GenerativeModel("models/gemini-pro")
             
             # Combine system prompt and user prompt for Gemini if system prompt exists
             full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
