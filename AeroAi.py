@@ -74,14 +74,14 @@ DUPLICATE_COMMAND_SECONDS = 1.5
 # ============================================================
 # UNIFIED AI BRAIN (Direct REST API for Cloud, Ollama for Local)
 # ============================================================
+
 def ask_ai_brain(prompt, system_prompt=""):
     """
-    Uses direct Google Gemini REST API with the universally supported flash model.
+    Uses direct Google Gemini REST API with stable v1 endpoint to bypass 404/440 errors on Cloud.
     """
     if GEMINI_API_KEY:
         try:
-            # Using the stable general-purpose gemini-flash endpoint
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
             full_text = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
             
             payload = {
@@ -93,7 +93,7 @@ def ask_ai_brain(prompt, system_prompt=""):
             data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
             
-            with urllib.request.urlopen(req, timeout=10) as response:
+            with urllib.request.urlopen(req, timeout=12) as response:
                 result = json.loads(response.read().decode("utf-8"))
                 candidate = result.get("candidates", [{}])[0]
                 text = candidate.get("content", {}).get("parts", [{}])[0].get("text", "")
@@ -114,6 +114,7 @@ def ask_ai_brain(prompt, system_prompt=""):
         except Exception as e:
             print(f"Ollama Error: {e}")
             return f"Ollama Error: {str(e)}"
+
 # ============================================================
 # GLOBAL OBJECTS
 # ============================================================
@@ -217,46 +218,41 @@ def speak(text):
         threading.Thread(target=speak_background, args=(text,), daemon=True).start()
 
 # ============================================================
-# WEBSITE OPENING FUNCTION
+# WEBSITE MAPPING & URL RESOLUTION
 # ============================================================
 
-def open_website(query):
+WEBSITES_MAP = {
+    "youtube": "https://www.youtube.com",
+    "google": "https://www.google.com",
+    "facebook": "https://www.facebook.com",
+    "messenger": "https://www.messenger.com",
+    "instagram": "https://www.instagram.com",
+    "whatsapp": "https://web.whatsapp.com",
+    "telegram": "https://web.telegram.org",
+    "twitter": "https://twitter.com",
+    "x": "https://x.com",
+    "reddit": "https://www.reddit.com",
+    "linkedin": "https://www.linkedin.com",
+    "chatgpt": "https://chatgpt.com",
+    "gemini": "https://gemini.google.com",
+    "github": "https://github.com",
+    "stackoverflow": "https://stackoverflow.com",
+    "vscode": "https://code.visualstudio.com",
+    "netflix": "https://www.netflix.com",
+    "spotify": "https://open.spotify.com",
+    "twitch": "https://www.twitch.tv",
+    "daraz": "https://www.daraz.com.bd",
+    "prothomalo": "https://www.prothomalo.com",
+    "bikroy": "https://bikroy.com",
+    "10minuteschool": "https://10minuteschool.com"
+}
+
+def get_matched_website_url(query):
     query = query.lower()
-    websites = {
-        "youtube": "https://www.youtube.com",
-        "google": "https://www.google.com",
-        "facebook": "https://www.facebook.com",
-        "messenger": "https://www.messenger.com",
-        "instagram": "https://www.instagram.com",
-        "whatsapp": "https://web.whatsapp.com",
-        "telegram": "https://web.telegram.org",
-        "twitter": "https://twitter.com",
-        "x": "https://x.com",
-        "reddit": "https://www.reddit.com",
-        "linkedin": "https://www.linkedin.com",
-        "chatgpt": "https://chatgpt.com",
-        "gemini": "https://gemini.google.com",
-        "github": "https://github.com",
-        "stackoverflow": "https://stackoverflow.com",
-        "vscode": "https://code.visualstudio.com",
-        "netflix": "https://www.netflix.com",
-        "spotify": "https://open.spotify.com",
-        "twitch": "https://www.twitch.tv",
-        "daraz": "https://www.daraz.com.bd",
-        "prothomalo": "https://www.prothomalo.com",
-        "bikroy": "https://bikroy.com",
-        "10minuteschool": "https://10minuteschool.com"
-    }
-    
-    matched = False
-    for key, url in websites.items():
+    for key, url in WEBSITES_MAP.items():
         if key in query:
-            if DESKTOP_LIBS_AVAILABLE:
-                webbrowser.open(url)
-            speak(f"Opening {key}, sir.")
-            matched = True
-            break
-    return matched
+            return key, url
+    return None, None
 
 # ============================================================
 # DESKTOP CONTROL (Safe for Cloud)
@@ -264,58 +260,60 @@ def open_website(query):
 
 def control_laptop(query_text):
     if not DESKTOP_LIBS_AVAILABLE or os.environ.get("RENDER"):
-        return False
+        return False, None
 
     low_q = query_text.lower().strip()
     user_profile = os.environ.get("USERPROFILE", os.path.expanduser("~"))
 
     try:
+        key, url = get_matched_website_url(low_q)
+        if key:
+            webbrowser.open(url)
+            speak(f"Opening {key}, sir.")
+            return True, url
+
         if "graphics" in low_q or "grafix" in low_q:
             if any(w in low_q for w in ["on", "start", "chalu", "enable", "open", "kholo", "khulo"]):
                 os.system("start ms-settings:display-advancedgraphics")
                 speak("Graphics settings opened, sir.")
-                return True
+                return True, None
 
         if any(k in low_q for k in ["close tab", "tab close"]):
             pyautogui.hotkey("ctrl", "w")
             speak("Tab closed, sir.")
-            return True
+            return True, None
 
         if "close window" in low_q or "window close" in low_q or "bondho koro" in low_q or "close this" in low_q:
             pyautogui.hotkey("alt", "f4")
             speak("Window closed, sir.")
-            return True
+            return True, None
 
         if "screenshot" in low_q:
             desktop = os.path.join(user_profile, "Desktop")
             shot_path = os.path.join(desktop, "screenshot.png")
             pyautogui.screenshot(shot_path)
             speak("Screenshot saved on Desktop, sir.")
-            return True
-
-        if not "close" in low_q:
-            if open_website(low_q):
-                return True
+            return True, None
 
         if "volume up" in low_q or "increase volume" in low_q:
             pyautogui.press("volumeup", presses=5, interval=0.05)
             speak("Volume increased, sir.")
-            return True
+            return True, None
 
         if "volume down" in low_q or "decrease volume" in low_q:
             pyautogui.press("volumedown", presses=5, interval=0.05)
             speak("Volume decreased, sir.")
-            return True
+            return True, None
 
         if "mute" in low_q:
             pyautogui.press("volumemute")
             speak("Muted, sir.")
-            return True
+            return True, None
 
         if "lock pc" in low_q or "lock laptop" in low_q:
             speak("Locking the system, sir.")
             subprocess.Popen(["rundll32.exe", "user32.dll,LockWorkStation"])
-            return True
+            return True, None
 
         apps = {
             "notepad": "notepad.exe",
@@ -330,11 +328,11 @@ def control_laptop(query_text):
                 if app_name in low_q:
                     subprocess.Popen(executable, shell=True)
                     speak(f"Opening {app_name}, sir.")
-                    return True
+                    return True, None
     except Exception as e:
         print(f"Desktop Control Error: {e}")
 
-    return False
+    return False, None
 
 # ============================================================
 # NORMALIZATION & SPEECH RECOGNITION
@@ -403,7 +401,7 @@ def voice_listener_loop():
                 if not is_duplicate_command(query):
                     comm.update_subtitle.emit(f"You: {query}")
                     
-                    handled = control_laptop(query)
+                    handled, _ = control_laptop(query)
                     if not handled:
                         try:
                             current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
@@ -720,6 +718,11 @@ HTML_INTERFACE = """<!DOCTYPE html>
                 let replyText = data.reply || data.message || "Executed successfully.";
                 log.innerHTML += "<br><span style='color:#39ff14;'>AeRo Ai: " + replyText + "</span>";
                 log.scrollTop = log.scrollHeight;
+
+                // If backend returned a website URL, open it in client browser automatically!
+                if(data.url) {
+                    window.open(data.url, '_blank');
+                }
             })
             .catch(err => {
                 log.innerHTML += "<br><span style='color:red;'>Error connecting to server.</span>";
@@ -746,20 +749,27 @@ if REMOTE_ACCESS_AVAILABLE:
             
             comm.update_subtitle.emit(f"Web: {query}")
             
-            handled = control_laptop(query)
-            if not handled:
-                current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
-                system_prompt = (
-                    f"You are AeRo Ai, an advanced AI companion created for Omar. "
-                    f"Current date and time is {current_date_time}. "
-                    f"You understand and reply fluently in Bengali, English, and Banglish (Bengali written in English letters). "
-                    f"Do NOT translate the user's question. Directly answer what the user is asking in a friendly, human-like, conversational tone within 1-2 short sentences."
-                )
-                reply = ask_ai_brain(query, system_prompt)
-                speak(reply)
-                return jsonify({"status": "success", "reply": reply})
-            else:
-                return jsonify({"status": "success", "reply": f"Command '{query}' executed successfully."})
+            # Check desktop controls & website routing
+            handled, target_url = control_laptop(query)
+            if handled:
+                return jsonify({
+                    "status": "success", 
+                    "reply": f"Command '{query}' executed successfully.",
+                    "url": target_url
+                })
+            
+            # Fallback to AI Brain (Gemini REST / Ollama)
+            current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
+            system_prompt = (
+                f"You are AeRo Ai, an advanced AI companion created for Omar. "
+                f"Current date and time is {current_date_time}. "
+                f"You understand and reply fluently in Bengali, English, and Banglish (Bengali written in English letters). "
+                f"Do NOT translate the user's question. Directly answer what the user is asking in a friendly, human-like, conversational tone within 1-2 short sentences."
+            )
+            reply = ask_ai_brain(query, system_prompt)
+            speak(reply)
+            return jsonify({"status": "success", "reply": reply})
+
         except Exception as e:
             print(f"Phone Ask Error: {e}")
             try:
