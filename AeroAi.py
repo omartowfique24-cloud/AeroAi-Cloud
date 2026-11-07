@@ -8,13 +8,11 @@ import subprocess
 import sys
 import threading
 import time
-import urllib.request
-import json
 import webbrowser
 from gtts import gTTS
 import ollama
 
-# Safe Desktop Libraries Import (Won't crash on Cloud)
+# Safe Desktop Libraries Import
 try:
     import pyautogui
     import pygame
@@ -23,7 +21,7 @@ try:
 except ImportError:
     DESKTOP_LIBS_AVAILABLE = False
 
-# Flask Import for Remote Web Interface
+# Flask Import for Local Web Interface
 try:
     from flask import Flask, request, jsonify, render_template_string
     REMOTE_ACCESS_AVAILABLE = True
@@ -34,17 +32,13 @@ except ImportError:
 # UTF-8 OUTPUT
 # ------------------------------------------------------------
 try:
-    sys.stdout = io.TextIOWrapper(
-        sys.stdout.buffer, encoding="utf-8", errors="replace"
-    )
-    sys.stderr = io.TextIOWrapper(
-        sys.stderr.buffer, encoding="utf-8", errors="replace"
-    )
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 except Exception:
     pass
 
 # ------------------------------------------------------------
-# PYQT5 IMPORTS (Safe for Cloud)
+# PYQT5 IMPORTS
 # ------------------------------------------------------------
 try:
     from PyQt5.QtCore import QObject, Qt, pyqtSignal, QPoint, QTimer
@@ -53,84 +47,47 @@ try:
         QApplication,
         QLabel,
         QMainWindow,
-        QVBoxLayout,
-        QWidget,
+        QLineEdit,
+        QPushButton,
     )
     PYQT_AVAILABLE = True
 except ImportError:
     PYQT_AVAILABLE = False
 
 # ============================================================
-# CONFIGURATION
+# CONFIGURATION (100% LOCAL)
 # ============================================================
 
 OLLAMA_MODEL = os.environ.get("AERO_OLLAMA_MODEL", "llama3")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
-
 VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
 
 # ============================================================
-# UNIFIED AI BRAIN (Direct REST API for Cloud, Ollama for Local)
+# LOCAL AI BRAIN (OLLAMA ONLY)
 # ============================================================
 
 def ask_ai_brain(prompt, system_prompt=""):
-    """
-    Uses direct Google Gemini REST API with stable v1 endpoint to bypass 404/440 errors on Cloud.
-    """
-    if GEMINI_API_KEY:
-        try:
-            url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
-            full_text = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
-            
-            payload = {
-                "contents": [{
-                    "parts": [{"text": full_text}]
-                }]
-            }
-            
-            data = json.dumps(payload).encode("utf-8")
-            req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
-            
-            with urllib.request.urlopen(req, timeout=12) as response:
-                result = json.loads(response.read().decode("utf-8"))
-                candidate = result.get("candidates", [{}])[0]
-                text = candidate.get("content", {}).get("parts", [{}])[0].get("text", "")
-                if text:
-                    return text
-            return "Sorry Omar sir, empty response from Gemini cloud."
-        except Exception as e:
-            print(f"Gemini REST Error: {e}")
-            return f"Gemini Error: {str(e)}"
-    else:
-        try:
-            messages = []
-            if system_prompt:
-                messages.append({"role": "system", "content": system_prompt})
-            messages.append({"role": "user", "content": prompt})
-            response = ollama.chat(model=OLLAMA_MODEL, messages=messages)
-            return response["message"]["content"]
-        except Exception as e:
-            print(f"Ollama Error: {e}")
-            return f"Ollama Error: {str(e)}"
+    try:
+        messages = []
+        if system_prompt:
+            messages.append({"role": "system", "content": system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        response = ollama.chat(model=OLLAMA_MODEL, messages=messages)
+        return response["message"]["content"]
+    except Exception as e:
+        print(f"Ollama Error: {e}")
+        return f"Local AI Error: {str(e)} (Check if Ollama is running)"
 
 # ============================================================
-# GLOBAL OBJECTS
+# GLOBAL OBJECTS & SIGNALS
 # ============================================================
 
-command_queue = queue.Queue()
 command_worker_running = True
-processing_event = threading.Event()
 tts_lock = threading.Lock()
-
 duplicate_lock = threading.Lock()
 last_command_text = ""
 last_command_time = 0.0
-
-# ============================================================
-# COMMUNICATION SIGNALS
-# ============================================================
 
 class HUDComm(QObject if PYQT_AVAILABLE else object):
     if PYQT_AVAILABLE:
@@ -147,7 +104,7 @@ if not PYQT_AVAILABLE:
     comm.update_subtitle = type('obj', (object,), {'emit': lambda self, x: None})()
 
 # ============================================================
-# INITIALIZE AUDIO
+# AUDIO & TTS
 # ============================================================
 
 AUDIO_READY = False
@@ -157,10 +114,6 @@ if DESKTOP_LIBS_AVAILABLE:
         AUDIO_READY = True
     except Exception as e:
         print(f"Audio initialization error: {e}")
-
-# ============================================================
-# TEXT / SPEECH HELPERS
-# ============================================================
 
 def contains_bangla(text):
     return any("\u0980" <= c <= "\u09FF" for c in text)
@@ -175,8 +128,7 @@ def speak_background(text):
     with tts_lock:
         filename = None
         try:
-            is_bangla = contains_bangla(text)
-            language = "bn" if is_bangla else "en"
+            language = "bn" if contains_bangla(text) else "en"
             tts = gTTS(text=text, lang=language, slow=False)
             filename = os.path.join(
                 os.getcwd(),
@@ -218,7 +170,7 @@ def speak(text):
         threading.Thread(target=speak_background, args=(text,), daemon=True).start()
 
 # ============================================================
-# WEBSITE MAPPING & URL RESOLUTION
+# WEBSITE MAPPING & DESKTOP CONTROL
 # ============================================================
 
 WEBSITES_MAP = {
@@ -234,7 +186,6 @@ WEBSITES_MAP = {
     "reddit": "https://www.reddit.com",
     "linkedin": "https://www.linkedin.com",
     "chatgpt": "https://chatgpt.com",
-    "gemini": "https://gemini.google.com",
     "github": "https://github.com",
     "stackoverflow": "https://stackoverflow.com",
     "vscode": "https://code.visualstudio.com",
@@ -254,12 +205,8 @@ def get_matched_website_url(query):
             return key, url
     return None, None
 
-# ============================================================
-# DESKTOP CONTROL (Safe for Cloud)
-# ============================================================
-
 def control_laptop(query_text):
-    if not DESKTOP_LIBS_AVAILABLE or os.environ.get("RENDER"):
+    if not DESKTOP_LIBS_AVAILABLE:
         return False, None
 
     low_q = query_text.lower().strip()
@@ -271,6 +218,18 @@ def control_laptop(query_text):
             webbrowser.open(url)
             speak(f"Opening {key}, sir.")
             return True, url
+
+        # Specific file or app opening support using os.startfile
+        if "open file" in low_q or "file kholo" in low_q:
+            # Example target file path (Change or extend based on needs)
+            target_file = os.path.join(user_profile, "Desktop", "example.txt")
+            if os.path.exists(target_file):
+                os.startfile(target_file)
+                speak("File opened successfully, sir.")
+                return True, None
+            else:
+                speak("File not found on Desktop, sir.")
+                return True, None
 
         if "graphics" in low_q or "grafix" in low_q:
             if any(w in low_q for w in ["on", "start", "chalu", "enable", "open", "kholo", "khulo"]):
@@ -323,7 +282,7 @@ def control_laptop(query_text):
             "vscode": "code",
         }
 
-        if not "close" in low_q:
+        if "close" not in low_q:
             for app_name, executable in apps.items():
                 if app_name in low_q:
                     subprocess.Popen(executable, shell=True)
@@ -335,7 +294,7 @@ def control_laptop(query_text):
     return False, None
 
 # ============================================================
-# NORMALIZATION & SPEECH RECOGNITION
+# VOICE RECOGNITION LOOP
 # ============================================================
 
 def normalize_query(text):
@@ -346,12 +305,10 @@ def normalize_query(text):
     replacements = {
         "khulo": "open", "kholo": "open", "khol": "open", "khul": "open",
         "chalu koro": "start", "bondho koro": "close",
-        "koyta baje": "time", "ajker tarikh": "date",
     }
     for old, new in sorted(replacements.items(), key=lambda item: len(item[0]), reverse=True):
         q = q.replace(old, new)
-    q = re.sub(r"\s+", " ", q).strip()
-    return q
+    return re.sub(r"\s+", " ", q).strip()
 
 def recognize_voice(recognizer, audio):
     try:
@@ -401,56 +358,113 @@ def voice_listener_loop():
                 if not is_duplicate_command(query):
                     comm.update_subtitle.emit(f"You: {query}")
                     
-                    handled, _ = control_laptop(query)
-                    if not handled:
-                        try:
+                    key, target_url = get_matched_website_url(query)
+                    if key:
+                        webbrowser.open(target_url)
+                        speak(f"Opening {key}, sir.")
+                    else:
+                        handled, _ = control_laptop(query)
+                        if not handled:
                             current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
                             system_prompt = (
                                 f"You are AeRo Ai, an advanced AI companion created for Omar. "
                                 f"Current date and time is {current_date_time}. "
-                                f"You understand and reply fluently in Bengali, English, and Banglish (Bengali written in English letters). "
-                                f"Do NOT translate the user's question. Directly answer what the user is asking in a friendly, human-like, conversational tone within 1-2 short sentences."
+                                f"Reply fluently in Bengali, English, or Banglish in 1-2 short sentences."
                             )
                             reply = ask_ai_brain(query, system_prompt)
                             speak(reply)
-                        except Exception as e:
-                            print(f"AI Brain Error: {e}")
-                            speak("Sorry Omar sir, error processing request.")
                 time.sleep(0.1)
         except sr.WaitTimeoutError:
-            comm.update_status.emit("STARK HUD // ONLINE")
+            comm.update_status.emit("ONLINE")
             continue
         except Exception as e:
             print(f"Listener Error: {e}")
             time.sleep(1)
 
 # ============================================================
-# STARK INDUSTRIES / JARVIS HOLOGRAM HUD GUI (PyQt5)
+# DESKTOP HOLOGRAM HUD (PyQt5)
 # ============================================================
 
 if PYQT_AVAILABLE:
     class HologramHUD(QMainWindow):
         def __init__(self):
             super().__init__()
-            self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool)
+            self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
             self.setAttribute(Qt.WA_TranslucentBackground)
-            self.setGeometry(100, 100, 420, 420)
+            self.setGeometry(100, 100, 820, 460)
 
-            self.angle = 0
-            self.status_text = "HUD // ONLINE"
-            self.sub_text = "Aero is ready, Omar sir."
+            self.angle = 0.0
+            self.status_text = "ONLINE"
+            self.sub_text = "AeRo Ai Ready"
+
+            self.cmd_input = QLineEdit(self)
+            self.cmd_input.setGeometry(450, 95, 340, 42)
+            self.cmd_input.setPlaceholderText("Type your command here, Omar sir...")
+            self.cmd_input.setStyleSheet(
+                "background-color: rgba(2, 10, 20, 235); color: #39ff14; "
+                "border: 1.5px solid #00f0ff; border-radius: 8px; padding: 8px; font-family: Consolas; font-size: 14px;"
+            )
+            self.cmd_input.returnPressed.connect(self.handle_typed_command)
+
+            self.exec_btn = QPushButton("EXECUTE", self)
+            self.exec_btn.setGeometry(450, 147, 340, 36)
+            self.exec_btn.setStyleSheet(
+                "QPushButton { background-color: #00f0ff; color: #000; font-weight: bold; "
+                "border-radius: 8px; font-family: Consolas; font-size: 14px; }"
+                "QPushButton:hover { background-color: #39ff14; }"
+            )
+            self.exec_btn.clicked.connect(self.handle_typed_command)
+
+            self.reply_label = QLabel("System Online (Local Server)...", self)
+            self.reply_label.setGeometry(450, 195, 340, 195)
+            self.reply_label.setWordWrap(True)
+            self.reply_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+            self.reply_label.setStyleSheet(
+                "background-color: rgba(0, 0, 0, 195); color: #ffffff; "
+                "border: 1.5px solid rgba(57, 255, 20, 160); border-radius: 8px; padding: 10px; font-family: Consolas; font-size: 13px;"
+            )
 
             self.timer = QTimer(self)
             self.timer.timeout.connect(self.update_animation)
-            self.timer.start(30)
+            self.timer.start(35)
 
             comm.update_status.connect(self.set_status)
             comm.update_subtitle.connect(self.set_subtitle)
 
             self.drag_position = QPoint()
 
+        def handle_typed_command(self):
+            text = self.cmd_input.text().strip()
+            if not text:
+                return
+            self.cmd_input.clear()
+            self.set_subtitle(f"You: {text}")
+            threading.Thread(target=self.process_text_command, args=(text,), daemon=True).start()
+
+        def process_text_command(self, query):
+            comm.update_status.emit("PROCESSING...")
+            
+            key, target_url = get_matched_website_url(query)
+            if key:
+                webbrowser.open(target_url)
+                speak(f"Opening {key}, sir.")
+                comm.update_status.emit("ONLINE")
+                return
+
+            handled, _ = control_laptop(query)
+            if not handled:
+                current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
+                system_prompt = (
+                    f"You are AeRo Ai, an advanced AI companion created for Omar. "
+                    f"Current date and time is {current_date_time}. "
+                    f"Reply fluently in Bengali, English, or Banglish in 1-2 short sentences."
+                )
+                reply = ask_ai_brain(query, system_prompt)
+                speak(reply)
+            comm.update_status.emit("ONLINE")
+
         def update_animation(self):
-            self.angle = (self.angle + 2) % 360
+            self.angle = (self.angle + 1.5) % 360
             self.update()
 
         def set_status(self, txt):
@@ -459,6 +473,7 @@ if PYQT_AVAILABLE:
 
         def set_subtitle(self, txt):
             self.sub_text = txt
+            self.reply_label.setText(txt)
             self.update()
 
         def mousePressEvent(self, event):
@@ -475,126 +490,214 @@ if PYQT_AVAILABLE:
             painter = QPainter(self)
             painter.setRenderHint(QPainter.Antialiasing)
 
-            width = self.width()
-            height = self.height()
-            center = QPoint(width // 2, height // 2)
+            cx, cy = 220, 230
+            center = QPoint(cx, cy)
 
-            painter.setPen(QPen(QColor(0, 240, 255, 120), 2, Qt.DashLine))
+            painter.setPen(QPen(QColor(0, 240, 255, 90), 1, Qt.DotLine))
             painter.setBrush(Qt.NoBrush)
-            painter.drawEllipse(center, 190, 190)
+            painter.drawEllipse(center, 185, 185)
+
+            painter.save()
+            painter.translate(center)
+            painter.rotate(self.angle * 0.4)
+            painter.setPen(QPen(QColor(0, 240, 255, 130), 1.5))
+            for i in range(0, 360, 15):
+                rad = math.radians(i)
+                r1 = 175
+                r2 = 185 if i % 45 == 0 else 180
+                painter.drawLine(
+                    int(math.cos(rad) * r1), int(math.sin(rad) * r1),
+                    int(math.cos(rad) * r2), int(math.sin(rad) * r2)
+                )
+            painter.restore()
 
             painter.save()
             painter.translate(center)
             painter.rotate(self.angle)
-            painter.setPen(QPen(QColor(0, 255, 150, 180), 3, Qt.SolidLine))
-            painter.drawArc(-160, -160, 320, 320, 45 * 16, 120 * 16)
-            painter.drawArc(-160, -160, 320, 320, 225 * 16, 90 * 16)
+            painter.setPen(QPen(QColor(0, 240, 255, 200), 3, Qt.SolidLine))
+            painter.drawArc(-155, -155, 310, 310, 20 * 16, 80 * 16)
+            painter.drawArc(-155, -155, 310, 310, 140 * 16, 60 * 16)
+            painter.drawArc(-155, -155, 310, 310, 260 * 16, 75 * 16)
             painter.restore()
 
-            core_brush = QBrush(QColor(0, 240, 255, 30))
-            painter.setBrush(core_brush)
+            painter.save()
+            painter.translate(center)
+            painter.rotate(-self.angle * 1.3)
+            painter.setPen(QPen(QColor(57, 255, 20, 170), 2, Qt.SolidLine))
+            painter.drawArc(-135, -135, 270, 270, 45 * 16, 100 * 16)
+            painter.drawArc(-135, -135, 270, 270, 225 * 16, 90 * 16)
+            painter.restore()
+
+            globe_r = 95
+            painter.setBrush(QBrush(QColor(0, 15, 32, 210)))
             painter.setPen(QPen(QColor(0, 240, 255, 220), 2))
-            painter.drawEllipse(center, 80, 80)
+            painter.drawEllipse(center, globe_r, globe_r)
+
+            rad_angle = math.radians(self.angle * 1.5)
+            step = 7
+            for x in range(-globe_r + 6, globe_r - 5, step):
+                for y in range(-globe_r + 6, globe_r - 5, step):
+                    if x * x + y * y <= (globe_r - 6) ** 2:
+                        nx = x + math.sin(rad_angle + y * 0.06) * 18
+                        asia_land = math.sin(nx * 0.09) * math.cos(y * 0.09) + math.cos((nx - y) * 0.07)
+                        if asia_land > 0.2:
+                            alpha = int(150 + 100 * math.sin(rad_angle * 2 + x * 0.1))
+                            painter.fillRect(cx + x, cy + y, 3, 3, QColor(0, 255, 204, max(60, min(255, alpha))))
+                        elif asia_land > -0.05:
+                            painter.fillRect(cx + x, cy + y, 2, 2, QColor(0, 240, 255, 85))
+
+            now = datetime.datetime.now()
+            date_str = now.strftime("%d %b %Y").upper()
+            time_str = now.strftime("%H:%M:%S")
+
+            painter.setPen(QPen(QColor(0, 240, 255, 160), 1))
+            painter.drawLine(cx + 95, cy - 35, cx + 145, cy - 65)
+            painter.drawLine(cx + 145, cy - 65, cx + 205, cy - 65)
+            painter.drawLine(cx + 95, cy + 35, cx + 145, cy + 65)
+            painter.drawLine(cx + 145, cy + 65, cx + 205, cy + 65)
+            painter.drawLine(cx - 95, cy - 35, cx - 145, cy - 65)
+            painter.drawLine(cx - 145, cy - 65, cx - 210, cy - 65)
+            painter.drawLine(cx - 95, cy + 35, cx - 145, cy + 65)
+            painter.drawLine(cx - 145, cy + 65, cx - 210, cy + 65)
+
+            painter.setFont(QFont("Consolas", 8, QFont.Bold))
+            painter.setPen(QColor(57, 255, 20))
+            painter.drawText(cx + 148, cy - 70, "SYS: ON")
+            painter.drawText(cx + 148, cy + 60, "TEMP: 28°C")
+
+            painter.setPen(QColor(0, 240, 255))
+            painter.drawText(cx - 210, cy - 70, date_str)
+            painter.drawText(cx - 210, cy + 60, f"{time_str}")
+            painter.drawText(cx - 210, cy + 80, self.status_text[:12])
+
+            painter.setBrush(QBrush(QColor(2, 8, 18, 220)))
+            painter.setPen(QPen(QColor(57, 255, 20, 200), 1.5))
+            painter.drawRoundedRect(cx - 42, cy - 14, 84, 28, 8, 8)
 
             painter.setPen(QColor(57, 255, 20))
             painter.setFont(QFont("Consolas", 10, QFont.Bold))
-            painter.drawText(center.x() - 35, center.y() - 5, "AeRo Ai")
+            painter.drawText(cx - 28, cy + 5, "AeRo Ai")
 
-            current_time = datetime.datetime.now().strftime("%H:%M:%S")
-            painter.setPen(QColor(255, 255, 255))
-            painter.setFont(QFont("Consolas", 9, QFont.Bold))
-            painter.drawText(center.x() - 32, center.y() + 18, current_time)
+            painter.setBrush(QBrush(QColor(3, 12, 24, 225)))
+            painter.setPen(QPen(QColor(0, 240, 255, 180), 1.5))
+            painter.drawRoundedRect(435, 50, 370, 360, 14, 14)
+
+            painter.setPen(QColor(57, 255, 20))
+            painter.setFont(QFont("Consolas", 11, QFont.Bold))
+            painter.drawText(450, 80, "AERO LOCAL TERMINAL")
 
 # ============================================================
-# MOBILE WEB CONTROL & INTERFACE (FLASK) - UPDATED DESIGN
+# LOCAL WEB INTERFACE (FLASK)
 # ============================================================
 
 HTML_INTERFACE = """<!DOCTYPE html>
 <html>
 <head>
-    <title>AeRo Ai - Neural Terminal</title>
+    <title>AeRo Ai - Local HUD</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { background-color: #02060c; color: #00f0ff; font-family: 'Consolas', 'Segoe UI', sans-serif; text-align: center; padding: 10px; margin: 0; overflow-x: hidden; }
-        
-        .main-wrapper { display: flex; flex-direction: row; justify-content: center; align-items: flex-start; max-width: 520px; margin: 15px auto; gap: 12px; }
-        
-        /* Left Side: Earth Map & Temperature Widget */
-        .left-panel { display: flex; flex-direction: column; align-items: center; background: rgba(5, 18, 32, 0.9); border: 1px solid #00f0ff; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(0, 240, 255, 0.3); width: 130px; }
-        .globe-container { position: relative; width: 110px; height: 110px; margin-bottom: 8px; }
-        
-        /* Detailed Earth Map Canvas with Country Borders & Continents */
-        canvas { width: 110px; height: 110px; border-radius: 50%; box-shadow: 0 0 15px rgba(0, 240, 255, 0.6), inset 0 0 12px rgba(0, 240, 255, 0.4); background: radial-gradient(circle, #002b49 0%, #000b18 100%); }
-        
-        .temp-box { background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.4); border-radius: 6px; padding: 6px; width: 100%; font-size: 13px; color: #39ff14; font-weight: bold; text-shadow: 0 0 5px #39ff14; }
-
-        /* Right / Center Panel: Typing Pad & Main Terminal */
-        .card { background: rgba(5, 18, 32, 0.95); border: 2px solid #00f0ff; border-radius: 12px; padding: 16px; flex: 1; box-shadow: 0 0 25px rgba(0, 240, 255, 0.4), inset 0 0 10px rgba(0, 240, 255, 0.15); text-align: center; }
-        
-        .brand-title { color: #39ff14; font-size: 22px; font-weight: bold; text-shadow: 0 0 12px #39ff14; margin: 0 0 12px 0; letter-spacing: 2px; }
-        
-        input[type="text"] { width: 90%; padding: 12px; border: 1px solid #00f0ff; background: #000; color: #39ff14; border-radius: 6px; font-size: 15px; margin-bottom: 12px; outline: none; box-shadow: inset 0 0 8px rgba(0, 240, 255, 0.3); }
-        input[type="text"]::placeholder { color: rgba(0, 240, 255, 0.4); }
-
-        .btn-group { display: flex; gap: 8px; justify-content: center; }
-        button { background: #00f0ff; color: #000; border: none; padding: 10px 14px; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; transition: 0.3s; flex: 1; box-shadow: 0 0 10px rgba(0, 240, 255, 0.4); }
-        button:hover { background: #39ff14; box-shadow: 0 0 15px #39ff14; color: #000; }
-        
-        #mic-btn { background: #ff0055; color: #fff; box-shadow: 0 0 10px rgba(255, 0, 85, 0.4); }
-        #mic-btn.listening { background: #39ff14; color: #000; box-shadow: 0 0 15px #39ff14; }
-        
-        #log { margin-top: 14px; color: #fff; font-size: 12px; text-align: left; background: #000; padding: 10px; border-radius: 6px; height: 120px; overflow-y: auto; border: 1px solid #39ff14; box-shadow: inset 0 0 10px rgba(57, 255, 20, 0.2); }
+        body { 
+            background-color: #010612; color: #00f0ff; 
+            font-family: 'Consolas', 'Segoe UI', sans-serif; 
+            margin: 0; padding: 20px;
+            background-image: radial-gradient(circle, rgba(0,240,255,0.08) 1px, transparent 1px);
+            background-size: 24px 24px;
+            display: flex; justify-content: center; align-items: center; min-height: 92vh;
+        }
+        .main-wrapper { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; max-width: 1050px; width: 100%; gap: 24px; }
+        .hud-panel { 
+            display: flex; flex-direction: column; align-items: center; 
+            background: rgba(3, 12, 24, 0.94); border: 1.5px solid rgba(0, 240, 255, 0.6); 
+            border-radius: 16px; padding: 18px; box-shadow: 0 0 30px rgba(0, 240, 255, 0.3); width: 310px; 
+        }
+        canvas { width: 250px; height: 250px; border-radius: 50%; background: radial-gradient(circle, #001c38 0%, #00040a 100%); box-shadow: 0 0 25px rgba(0, 240, 255, 0.5); }
+        .telemetry-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; margin-top: 14px; }
+        .tele-box { background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.4); border-radius: 8px; padding: 8px; font-size: 13px; color: #39ff14; font-weight: bold; text-align: center; }
+        .chat-card { 
+            background: rgba(3, 12, 24, 0.96); border: 2px solid #00f0ff; border-radius: 16px; 
+            padding: 24px; flex: 1; min-width: 340px; max-width: 620px;
+            box-shadow: 0 0 40px rgba(0, 240, 255, 0.4), inset 0 0 15px rgba(0, 240, 255, 0.15); 
+            display: flex; flex-direction: column;
+        }
+        .brand-title { color: #39ff14; font-size: 26px; font-weight: bold; text-shadow: 0 0 14px #39ff14; margin: 0 0 16px 0; letter-spacing: 2px; text-align: left; }
+        #log { 
+            color: #fff; font-size: 14px; text-align: left; background: #000; 
+            padding: 16px; border-radius: 10px; height: 280px; overflow-y: auto; 
+            border: 1.5px solid #39ff14; box-shadow: inset 0 0 12px rgba(57, 255, 20, 0.2); 
+            margin-bottom: 16px; line-height: 1.5;
+        }
+        .input-row { display: flex; gap: 10px; margin-bottom: 12px; }
+        input[type="text"] { 
+            flex: 1; padding: 14px; border: 1.5px solid #00f0ff; background: #000; 
+            color: #39ff14; border-radius: 8px; font-size: 16px; outline: none; 
+            box-shadow: inset 0 0 8px rgba(0, 240, 255, 0.3); 
+        }
+        input[type="text"]::placeholder { color: rgba(0, 240, 255, 0.45); }
+        .btn-group { display: flex; gap: 12px; }
+        button { background: #00f0ff; color: #000; border: none; padding: 13px 18px; border-radius: 8px; font-weight: bold; font-size: 15px; cursor: pointer; transition: 0.3s; flex: 1; box-shadow: 0 0 12px rgba(0, 240, 255, 0.4); }
+        button:hover { background: #39ff14; box-shadow: 0 0 18px #39ff14; color: #000; }
+        #mic-btn { background: #ff0055; color: #fff; box-shadow: 0 0 12px rgba(255, 0, 85, 0.4); }
+        #mic-btn.listening { background: #39ff14; color: #000; box-shadow: 0 0 18px #39ff14; }
     </style>
 </head>
 <body>
     <div class="main-wrapper">
-        <!-- Left Side: Earth Map & Temperature -->
-        <div class="left-panel">
-            <div class="globe-container">
-                <canvas id="earthCanvas" width="110" height="110"></canvas>
+        <div class="hud-panel">
+            <canvas id="earthCanvas" width="250" height="250"></canvas>
+            <div class="telemetry-grid">
+                <div class="tele-box">SYS: ON</div>
+                <div class="tele-box">TEMP: 28°C</div>
+                <div class="tele-box" id="date-box">-- --- ----</div>
+                <div class="tele-box" id="time-box">--:--:--</div>
             </div>
-            <div class="temp-box" id="temp-display">28°C</div>
         </div>
 
-        <!-- Center/Right Panel: Main Typing Pad & Terminal -->
-        <div class="card">
-            <div class="brand-title">AeRo Ai</div>
-            <input type="text" id="cmd" placeholder="Type or speak command..." onkeydown="if(event.key === 'Enter') sendCommand()">
+        <div class="chat-card">
+            <div class="brand-title">AeRo Ai // LOCAL TERMINAL</div>
+            <div id="log">System Online (Local Server)...</div>
+            <div class="input-row">
+                <input type="text" id="cmd" placeholder="Type your command or message here..." onkeydown="if(event.key === 'Enter') sendCommand()">
+            </div>
             <div class="btn-group">
                 <button onclick="sendCommand()">EXECUTE</button>
                 <button id="mic-btn" onclick="toggleVoice()">🎙️ SPEAK</button>
             </div>
-            <div id="log">System Online...</div>
         </div>
     </div>
 
     <script>
+        function updateDateTime() {
+            const now = new Date();
+            document.getElementById("date-box").innerText = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
+            document.getElementById("time-box").innerText = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        }
+        setInterval(updateDateTime, 1000);
+        updateDateTime();
+
         const canvas = document.getElementById('earthCanvas');
         const ctx = canvas.getContext('2d');
         let angle = 0;
 
-        function drawEarthMap() {
+        function drawAsianTechEarth() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             let cx = canvas.width / 2;
             let cy = canvas.height / 2;
-            let radius = 50;
+            let radius = 105;
 
-            // Outer ring
             ctx.beginPath();
-            ctx.arc(cx, cy, radius + 3, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
-            ctx.lineWidth = 1;
-            ctx.setLineDash([2, 2]);
+            ctx.arc(cx, cy, radius + 8, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 4]);
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // Base globe ocean
             ctx.beginPath();
             ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-            ctx.fillStyle = '#001830';
+            ctx.fillStyle = '#001428';
             ctx.fill();
             ctx.strokeStyle = '#00f0ff';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 2.5;
             ctx.stroke();
 
             ctx.save();
@@ -602,100 +705,79 @@ HTML_INTERFACE = """<!DOCTYPE html>
             ctx.arc(cx, cy, radius, 0, Math.PI * 2);
             ctx.clip();
 
-            // Simulated Detailed Country Borders & Continents (Polygon Grid)
-            ctx.fillStyle = 'rgba(57, 255, 20, 0.25)';
-            ctx.strokeStyle = 'rgba(57, 255, 20, 0.7)';
-            ctx.lineWidth = 1;
-
-            // Drawing dynamic continent landmasses representing country borders
-            for (let i = -4; i <= 4; i++) {
-                let xShift = Math.sin(angle + i * 0.8) * (radius * 0.7);
-                ctx.beginPath();
-                ctx.ellipse(cx + xShift, cy + (i * 8), 18, 32, i * 0.3, 0, Math.PI * 2);
-                ctx.fill();
-                ctx.stroke();
+            let dotSpacing = 6;
+            for (let x = -radius; x <= radius; x += dotSpacing) {
+                for (let y = -radius; y <= radius; y += dotSpacing) {
+                    if (x*x + y*y <= radius*radius) {
+                        let nx = x + Math.sin(angle + y * 0.06) * 20;
+                        let asiaLand = Math.sin(nx * 0.09) * Math.cos(y * 0.09) + Math.cos((nx - y) * 0.07);
+                        if (asiaLand > 0.18) {
+                            let alpha = (0.6 + 0.4 * Math.sin(angle * 3 + x * 0.1));
+                            ctx.fillStyle = `rgba(57, 255, 20, ${alpha})`;
+                            ctx.fillRect(cx + x, cy + y, 3, 3);
+                        } else if (asiaLand > -0.1) {
+                            ctx.fillStyle = 'rgba(0, 240, 255, 0.35)';
+                            ctx.fillRect(cx + x, cy + y, 2, 2);
+                        }
+                    }
+                }
             }
-
-            // Meridian & Latitude Grid lines for Map navigation
-            ctx.strokeStyle = 'rgba(0, 240, 255, 0.35)';
-            ctx.lineWidth = 1;
-            for(let j = -2; j <= 2; j++) {
-                ctx.beginPath();
-                ctx.arc(cx + (j * 15), cy, radius, -Math.PI/2, Math.PI/2);
-                ctx.stroke();
-            }
-
             ctx.restore();
 
-            // Center Logo inside Earth
             ctx.beginPath();
-            ctx.arc(cx, cy, 20, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(3, 8, 16, 0.85)';
+            ctx.arc(cx, cy, 28, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(2, 6, 16, 0.92)';
             ctx.fill();
             ctx.strokeStyle = '#39ff14';
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 2;
             ctx.stroke();
 
             ctx.fillStyle = '#39ff14';
-            ctx.font = 'bold 9px Consolas';
+            ctx.font = 'bold 12px Consolas';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText("AeRo", cx, cy - 3);
+            ctx.fillText("AeRo", cx, cy - 5);
             ctx.fillStyle = '#00f0ff';
-            ctx.fillText("AI", cx, cy + 7);
+            ctx.fillText("AI", cx, cy + 9);
 
             angle += 0.015;
-            requestAnimationFrame(drawEarthMap);
+            requestAnimationFrame(drawAsianTechEarth);
         }
-        drawEarthMap();
+        drawAsianTechEarth();
 
         let recognition;
         let isListening = false;
-
         if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
             let SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
             recognition = new SpeechRecognition();
             recognition.continuous = false;
             recognition.interimResults = false;
             recognition.lang = 'en-US';
-
             recognition.onresult = function(event) {
-                let speechText = event.results[0][0].transcript;
-                document.getElementById("cmd").value = speechText;
+                document.getElementById("cmd").value = event.results[0][0].transcript;
                 stopListening();
                 sendCommand();
             };
-
-            recognition.onerror = function(event) { stopListening(); };
-            recognition.onend = function(event) { stopListening(); };
+            recognition.onerror = stopListening;
+            recognition.onend = stopListening;
         }
 
         function toggleVoice() {
-            if (!recognition) {
-                alert("Speech recognition not supported in this browser.");
-                return;
-            }
-            if (isListening) {
-                recognition.stop();
-                stopListening();
-            } else {
-                recognition.start();
-                startListening();
-            }
+            if (!recognition) return alert("Speech recognition not supported.");
+            if (isListening) { recognition.stop(); stopListening(); }
+            else { recognition.start(); startListening(); }
         }
-
         function startListening() {
             isListening = true;
-            let micBtn = document.getElementById("mic-btn");
-            micBtn.classList.add("listening");
-            micBtn.innerHTML = "🔴 LISTENING...";
+            let btn = document.getElementById("mic-btn");
+            btn.classList.add("listening");
+            btn.innerHTML = "🔴 LISTENING...";
         }
-
         function stopListening() {
             isListening = false;
-            let micBtn = document.getElementById("mic-btn");
-            micBtn.classList.remove("listening");
-            micBtn.innerHTML = "🎙️ SPEAK";
+            let btn = document.getElementById("mic-btn");
+            btn.classList.remove("listening");
+            btn.innerHTML = "🎙️ SPEAK";
         }
 
         function sendCommand() {
@@ -714,16 +796,13 @@ HTML_INTERFACE = """<!DOCTYPE html>
             })
             .then(res => res.json())
             .then(data => {
-                let replyText = data.reply || data.message || "Executed successfully.";
+                let replyText = data.reply || data.message || "Executed.";
                 log.innerHTML += "<br><span style='color:#39ff14;'>AeRo Ai: " + replyText + "</span>";
                 log.scrollTop = log.scrollHeight;
-
-                if(data.url) {
-                    window.open(data.url, '_blank');
-                }
+                if(data.url) window.open(data.url, '_blank');
             })
-            .catch(err => {
-                log.innerHTML += "<br><span style='color:red;'>Error connecting to server.</span>";
+            .catch(() => {
+                log.innerHTML += "<br><span style='color:red;'>Error connecting to local server.</span>";
             });
         }
     </script>
@@ -747,11 +826,9 @@ if REMOTE_ACCESS_AVAILABLE:
             
             comm.update_subtitle.emit(f"Web: {query}")
             
-            # Direct Website Opening Check (Fast & Reliable)
             key, target_url = get_matched_website_url(query)
             if key:
-                if not os.environ.get("RENDER"):
-                    webbrowser.open(target_url)
+                webbrowser.open(target_url)
                 speak(f"Opening {key}, sir.")
                 return jsonify({
                     "status": "success", 
@@ -759,7 +836,6 @@ if REMOTE_ACCESS_AVAILABLE:
                     "url": target_url
                 })
 
-            # Normal Desktop Controls
             handled, desktop_url = control_laptop(query)
             if handled:
                 return jsonify({
@@ -768,50 +844,44 @@ if REMOTE_ACCESS_AVAILABLE:
                     "url": desktop_url
                 })
             
-            # Fallback to AI Brain (Gemini REST / Ollama)
             current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
             system_prompt = (
                 f"You are AeRo Ai, an advanced AI companion created for Omar. "
                 f"Current date and time is {current_date_time}. "
-                f"You understand and reply fluently in Bengali, English, and Banglish (Bengali written in English letters). "
-                f"Do NOT translate the user's question. Directly answer what the user is asking in a friendly, human-like, conversational tone within 1-2 short sentences."
+                f"Reply fluently in Bengali, English, or Banglish in 1-2 short sentences."
             )
             reply = ask_ai_brain(query, system_prompt)
             speak(reply)
             return jsonify({"status": "success", "reply": reply})
 
         except Exception as e:
-            print(f"Phone Ask Error: {e}")
+            print(f"Ask Error: {e}")
             return jsonify({"status": "error", "message": str(e)}), 500
 
 def run_flask_server(port):
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
 
 # ============================================================
-# MAIN APPLICATION EXECUTION
+# MAIN EXECUTION (100% LOCAL)
 # ============================================================
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     
-    if os.environ.get("RENDER") or GEMINI_API_KEY:
-        print(f"Starting AeRo Ai Cloud Web Server on port {port}...")
-        app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+    if REMOTE_ACCESS_AVAILABLE:
+        flask_thread = threading.Thread(target=run_flask_server, args=(port,), daemon=True)
+        flask_thread.start()
+        print(f"Local Web Interface available at: http://127.0.0.1:{port}")
+
+    if PYQT_AVAILABLE:
+        qt_app = QApplication(sys.argv)
+        voice_thread = threading.Thread(target=voice_listener_loop, daemon=True)
+        voice_thread.start()
+
+        hud = HologramHUD()
+        hud.show()
+        speak("Local AeRo Ai initialized, Omar sir.")
+        sys.exit(qt_app.exec_())
     else:
-        if REMOTE_ACCESS_AVAILABLE:
-            flask_thread = threading.Thread(target=run_flask_server, args=(port,), daemon=True)
-            flask_thread.start()
-            print(f"Flask Web Interface available at: http://127.0.0.1:{port}")
-
-        if PYQT_AVAILABLE:
-            qt_app = QApplication(sys.argv)
-            voice_thread = threading.Thread(target=voice_listener_loop, daemon=True)
-            voice_thread.start()
-
-            hud = HologramHUD()
-            hud.show()
-            speak("Stark holographic HUD initialized, Omar sir.")
-            sys.exit(qt_app.exec_())
-        else:
-            print("Running in console web-server mode.")
-            run_flask_server(port)
+        print("Running in console local web-server mode.")
+        run_flask_server(port)
