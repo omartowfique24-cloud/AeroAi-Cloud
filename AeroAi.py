@@ -71,48 +71,43 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
+
 # ============================================================
-# UNIFIED AI BRAIN (Gemini 3.8 Flash for Cloud, Ollama for Local)
+# UNIFIED AI BRAIN (Gemini Legacy SDK for Cloud, Ollama for Local)
 # ============================================================
 
 def ask_ai_brain(prompt, system_prompt=""):
     """
-    Uses the latest recommended gemini-3.8-flash model for Render Cloud.
+    Uses Google GenerativeAI Legacy SDK with robust fallback for Cloud execution.
     """
-    # 1. If Gemini API Key exists (Render Cloud)
     if GEMINI_API_KEY:
         try:
             genai.configure(api_key=GEMINI_API_KEY)
-            
-            # Using the exact recommended model name
-            model = genai.GenerativeModel("gemini-3.8-flash")
-            full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
-            response = model.generate_content(full_prompt)
-            
-            if response and response.text:
-                return response.text
-            return "Sorry Omar sir, empty response from Gemini cloud."
-            
+            for model_name in ["gemini-1.5-flash", "gemini-pro"]:
+                try:
+                    model = genai.GenerativeModel(model_name)
+                    full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
+                    response = model.generate_content(full_prompt)
+                    if response and response.text:
+                        return response.text
+                except Exception:
+                    continue
+            return "Sorry Omar sir, all Gemini cloud models failed to respond."
         except Exception as e:
             print(f"Gemini API Error: {e}")
             return f"Gemini Error: {str(e)}"
-            
-    # 2. Otherwise use local Ollama (Laptop)
     else:
         try:
             messages = []
             if system_prompt:
                 messages.append({"role": "system", "content": system_prompt})
             messages.append({"role": "user", "content": prompt})
-            
-            response = ollama.chat(
-                model=OLLAMA_MODEL, 
-                messages=messages
-            )
+            response = ollama.chat(model=OLLAMA_MODEL, messages=messages)
             return response["message"]["content"]
         except Exception as e:
             print(f"Ollama Error: {e}")
             return f"Ollama Error: {str(e)}"
+
 # ============================================================
 # GLOBAL OBJECTS
 # ============================================================
@@ -258,127 +253,80 @@ def open_website(query):
     return matched
 
 # ============================================================
-# DESKTOP CONTROL
+# DESKTOP CONTROL (Safe for Cloud)
 # ============================================================
 
 def control_laptop(query_text):
-    if not DESKTOP_LIBS_AVAILABLE:
+    if not DESKTOP_LIBS_AVAILABLE or os.environ.get("RENDER"):
         return False
 
     low_q = query_text.lower().strip()
     user_profile = os.environ.get("USERPROFILE", os.path.expanduser("~"))
 
-    if "graphics" in low_q or "grafix" in low_q:
-        if any(w in low_q for w in ["on", "start", "chalu", "enable", "open", "kholo", "khulo"]):
-            try:
+    try:
+        if "graphics" in low_q or "grafix" in low_q:
+            if any(w in low_q for w in ["on", "start", "chalu", "enable", "open", "kholo", "khulo"]):
                 os.system("start ms-settings:display-advancedgraphics")
                 speak("Graphics settings opened, sir.")
-            except Exception:
-                speak("Could not open graphics settings, sir.")
+                return True
+
+        if any(k in low_q for k in ["close tab", "tab close"]):
+            pyautogui.hotkey("ctrl", "w")
+            speak("Tab closed, sir.")
             return True
 
-    if any(k in low_q for k in ["close tab", "tab close"]):
-        pyautogui.hotkey("ctrl", "w")
-        speak("Tab closed, sir.")
-        return True
-
-    if "close window" in low_q or "window close" in low_q or "bondho koro" in low_q or "close this" in low_q:
-        pyautogui.hotkey("alt", "f4")
-        speak("Window closed, sir.")
-        return True
-
-    if "close workplace" in low_q or "workplace close" in low_q:
-        try:
-            os.system("taskkill /f /im explorer.exe & start explorer.exe")
-            speak("Workplace closed, sir.")
-        except Exception:
+        if "close window" in low_q or "window close" in low_q or "bondho koro" in low_q or "close this" in low_q:
             pyautogui.hotkey("alt", "f4")
             speak("Window closed, sir.")
-        return True
-
-    if "close" in low_q and len(low_q.split()) > 1:
-        target_close = low_q.replace("close", "").replace("bondho koro", "").strip()
-        if target_close:
-            target_name = "chrome.exe" if "chrome" in target_close else ("code.exe" if "code" in target_close or "vscode" in target_close else f"{target_close}.exe")
-            subprocess.run(f"taskkill /f /im {target_name}", shell=True, capture_output=True)
-            speak(f"Closed {target_close}, sir.")
             return True
 
-    if "new tab" in low_q:
-        pyautogui.hotkey("ctrl", "t")
-        speak("Opening a new tab, sir.")
-        return True
-
-    if "screenshot" in low_q:
-        try:
+        if "screenshot" in low_q:
             desktop = os.path.join(user_profile, "Desktop")
             shot_path = os.path.join(desktop, "screenshot.png")
             pyautogui.screenshot(shot_path)
             speak("Screenshot saved on Desktop, sir.")
-        except Exception:
-            speak("I could not take the screenshot, sir.")
-        return True
-
-    folders = {
-        "desktop": os.path.join(user_profile, "Desktop"),
-        "downloads": os.path.join(user_profile, "Downloads"),
-        "documents": os.path.join(user_profile, "Documents"),
-        "pictures": os.path.join(user_profile, "Pictures"),
-        "c drive": "C:\\",
-        "d drive": "D:\\",
-    }
-
-    for folder_name, folder_path in folders.items():
-        if folder_name in low_q and any(w in low_q for w in ["open", "show", "start", "khulo", "kholo"]):
-            if os.path.exists(folder_path):
-                os.startfile(folder_path)
-                speak(f"Opening {folder_name}, sir.")
-                return True
-
-    if ("workplace" in low_q or "work space" in low_q) and not "close" in low_q:
-        desktop_path = os.path.join(user_profile, "Desktop")
-        os.startfile(desktop_path)
-        speak("Opening workplace, sir.")
-        return True
-
-    if not "close" in low_q:
-        if open_website(low_q):
             return True
 
-    if "volume up" in low_q or "increase volume" in low_q:
-        pyautogui.press("volumeup", presses=5, interval=0.05)
-        speak("Volume increased, sir.")
-        return True
-
-    if "volume down" in low_q or "decrease volume" in low_q:
-        pyautogui.press("volumedown", presses=5, interval=0.05)
-        speak("Volume decreased, sir.")
-        return True
-
-    if "mute" in low_q:
-        pyautogui.press("volumemute")
-        speak("Muted, sir.")
-        return True
-
-    if "lock pc" in low_q or "lock laptop" in low_q:
-        speak("Locking the system, sir.")
-        subprocess.Popen(["rundll32.exe", "user32.dll,LockWorkStation"])
-        return True
-
-    apps = {
-        "notepad": "notepad.exe",
-        "calculator": "calc.exe",
-        "chrome": "chrome.exe",
-        "cmd": "cmd.exe",
-        "vscode": "code",
-    }
-
-    if not "close" in low_q:
-        for app_name, executable in apps.items():
-            if app_name in low_q:
-                subprocess.Popen(executable, shell=True)
-                speak(f"Opening {app_name}, sir.")
+        if not "close" in low_q:
+            if open_website(low_q):
                 return True
+
+        if "volume up" in low_q or "increase volume" in low_q:
+            pyautogui.press("volumeup", presses=5, interval=0.05)
+            speak("Volume increased, sir.")
+            return True
+
+        if "volume down" in low_q or "decrease volume" in low_q:
+            pyautogui.press("volumedown", presses=5, interval=0.05)
+            speak("Volume decreased, sir.")
+            return True
+
+        if "mute" in low_q:
+            pyautogui.press("volumemute")
+            speak("Muted, sir.")
+            return True
+
+        if "lock pc" in low_q or "lock laptop" in low_q:
+            speak("Locking the system, sir.")
+            subprocess.Popen(["rundll32.exe", "user32.dll,LockWorkStation"])
+            return True
+
+        apps = {
+            "notepad": "notepad.exe",
+            "calculator": "calc.exe",
+            "chrome": "chrome.exe",
+            "cmd": "cmd.exe",
+            "vscode": "code",
+        }
+
+        if not "close" in low_q:
+            for app_name, executable in apps.items():
+                if app_name in low_q:
+                    subprocess.Popen(executable, shell=True)
+                    speak(f"Opening {app_name}, sir.")
+                    return True
+    except Exception as e:
+        print(f"Desktop Control Error: {e}")
 
     return False
 
@@ -557,7 +505,7 @@ if PYQT_AVAILABLE:
             
             painter.setPen(QColor(57, 255, 20))
             painter.setFont(QFont("Consolas", 8))
-            painter.drawText(center.x() - 45, center.y() - 5, "AERO AI")
+            painter.drawText(center.x() - 45, center.y() - 5, "AEPO AI")
 
             current_time = datetime.datetime.now().strftime("%H:%M:%S")
             painter.setPen(QColor(255, 255, 255))
@@ -582,22 +530,52 @@ if PYQT_AVAILABLE:
 HTML_INTERFACE = """<!DOCTYPE html>
 <html>
 <head>
-    <title>Aero AI Stark HUD</title>
+    <title>AeRo Ai - Stark HUD</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { background-color: #0b0e14; color: #00f0ff; font-family: 'Consolas', 'Segoe UI', sans-serif; text-align: center; padding: 20px; }
-        .card { background: rgba(10, 25, 45, 0.9); border: 2px solid #00f0ff; border-radius: 12px; padding: 20px; max-width: 400px; margin: 0 auto; box-shadow: 0 0 20px rgba(0, 240, 255, 0.4); }
-        h1 { color: #39ff14; font-size: 22px; text-shadow: 0 0 10px #39ff14; }
-        input[type="text"] { width: 85%; padding: 12px; border: 1px solid #00f0ff; background: #000; color: #fff; border-radius: 6px; font-size: 16px; margin-bottom: 10px; outline: none; }
+        body { background-color: #030810; color: #00f0ff; font-family: 'Consolas', 'Segoe UI', sans-serif; text-align: center; padding: 10px; margin: 0; overflow-x: hidden; }
+        
+        /* Stark Expo Top Bar */
+        .top-bar { display: flex; justify-content: space-between; align-items: center; max-width: 440px; margin: 0 auto 8px auto; padding: 8px 14px; background: rgba(5, 20, 35, 0.85); border: 1px solid #00f0ff; border-radius: 8px; font-size: 13px; box-shadow: 0 0 15px rgba(0, 240, 255, 0.3); }
+        .brand { color: #39ff14; font-weight: bold; text-shadow: 0 0 10px #39ff14; font-size: 17px; letter-spacing: 2px; }
+        .info-pill { color: #00f0ff; font-weight: bold; text-shadow: 0 0 5px rgba(0, 240, 255, 0.5); }
+        
+        /* Hologram Earth Canvas Styles */
+        .hud-container { position: relative; width: 120px; height: 120px; margin: 0 auto 8px auto; }
+        canvas { width: 120px; height: 120px; border-radius: 50%; box-shadow: 0 0 20px rgba(0, 240, 255, 0.7), inset 0 0 15px rgba(0, 240, 255, 0.5); background: radial-gradient(circle, #011627 0%, #000 100%); }
+
+        /* Main Stark Terminal Card */
+        .card { background: rgba(5, 18, 32, 0.92); border: 2px solid #00f0ff; border-radius: 12px; padding: 18px; max-width: 410px; margin: 0 auto; box-shadow: 0 0 25px rgba(0, 240, 255, 0.4), inset 0 0 10px rgba(0, 240, 255, 0.15); }
+        h1 { color: #39ff14; font-size: 20px; text-shadow: 0 0 12px #39ff14; margin: 2px 0 10px 0; letter-spacing: 1px; }
+        p { margin: 5px 0 12px 0; font-size: 13px; color: #8ab4f8; }
+        
+        input[type="text"] { width: 85%; padding: 12px; border: 1px solid #00f0ff; background: #000; color: #39ff14; border-radius: 6px; font-size: 15px; margin-bottom: 12px; outline: none; box-shadow: inset 0 0 8px rgba(0, 240, 255, 0.3); }
+        input[type="text"]::placeholder { color: rgba(0, 240, 255, 0.4); }
+
         .btn-group { display: flex; gap: 10px; justify-content: center; }
-        button { background: #00f0ff; color: #000; border: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; transition: 0.3s; flex: 1; }
-        button:hover { background: #39ff14; box-shadow: 0 0 12px #39ff14; }
-        #mic-btn { background: #ff0055; color: #fff; }
-        #mic-btn.listening { background: #39ff14; color: #000; }
-        #log { margin-top: 15px; color: #fff; font-size: 13px; text-align: left; background: #000; padding: 10px; border-radius: 6px; height: 120px; overflow-y: auto; border: 1px solid #39ff14; }
+        button { background: #00f0ff; color: #000; border: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; transition: 0.3s; flex: 1; box-shadow: 0 0 10px rgba(0, 240, 255, 0.4); }
+        button:hover { background: #39ff14; box-shadow: 0 0 15px #39ff14; color: #000; }
+        
+        #mic-btn { background: #ff0055; color: #fff; box-shadow: 0 0 10px rgba(255, 0, 85, 0.4); }
+        #mic-btn.listening { background: #39ff14; color: #000; box-shadow: 0 0 15px #39ff14; }
+        
+        #log { margin-top: 15px; color: #fff; font-size: 13px; text-align: left; background: #000; padding: 12px; border-radius: 6px; height: 130px; overflow-y: auto; border: 1px solid #39ff14; box-shadow: inset 0 0 10px rgba(57, 255, 20, 0.2); }
     </style>
 </head>
 <body>
+    <!-- Stark Industries HUD Top Bar with AeRo Ai, Date & Temp -->
+    <div class="top-bar">
+        <div class="brand">AeRo Ai</div>
+        <div class="info-pill" id="date-time">Loading...</div>
+        <div class="info-pill" id="temp">28°C</div>
+    </div>
+
+    <!-- 3D Holographic Rotating Earth -->
+    <div class="hud-container">
+        <canvas id="earthCanvas" width="120" height="120"></canvas>
+    </div>
+
+    <!-- Main Stark Control Card -->
     <div class="card">
         <h1>⚡ STARK AERO HUD</h1>
         <p>Omar Sir's Remote Terminal</p>
@@ -611,6 +589,75 @@ HTML_INTERFACE = """<!DOCTYPE html>
     </div>
 
     <script>
+        // Live Date & Time Sync
+        function updateDateTime() {
+            const now = new Date();
+            const options = { month: 'short', day: 'numeric' };
+            const dateStr = now.toLocaleDateString('en-US', options);
+            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            document.getElementById("date-time").innerText = `${dateStr} | ${timeStr}`;
+        }
+        setInterval(updateDateTime, 1000);
+        updateDateTime();
+
+        // Holographic Rotating Earth Animation (Stark HUD Style)
+        const canvas = document.getElementById('earthCanvas');
+        const ctx = canvas.getContext('2d');
+        let angle = 0;
+
+        function drawEarth() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            let cx = canvas.width / 2;
+            let cy = canvas.height / 2;
+            let radius = 48;
+
+            // Outer Radar Scan Ring
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius + 6, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.25)';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([4, 4]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Earth Sphere Base
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.fillStyle = '#01192e';
+            ctx.fill();
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Rotating Longitude Grid Lines
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+            ctx.clip();
+
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
+            ctx.lineWidth = 1.5;
+
+            for (let i = -3; i <= 3; i++) {
+                let xOffset = Math.sin(angle + i * 0.7) * radius;
+                ctx.beginPath();
+                ctx.ellipse(cx + xOffset * 0.5, cy, Math.abs(xOffset), radius, 0, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // Latitude Equator Lines
+            ctx.beginPath();
+            ctx.moveTo(cx - radius, cy - 18); ctx.lineTo(cx + radius, cy - 18);
+            ctx.moveTo(cx - radius, cy + 18); ctx.lineTo(cx + radius, cy + 18);
+            ctx.strokeStyle = 'rgba(57, 255, 20, 0.45)';
+            ctx.stroke();
+
+            ctx.restore();
+            angle += 0.025;
+            requestAnimationFrame(drawEarth);
+        }
+        drawEarth();
+
         let recognition;
         let isListening = false;
 
@@ -629,7 +676,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
             };
 
             recognition.onerror = function(event) { stopListening(); };
-            recognition.onend = function() { stopListening(); };
+            recognition.onend = function(event) { stopListening(); };
         }
 
         function toggleVoice() {
@@ -677,7 +724,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
             .then(res => res.json())
             .then(data => {
                 let replyText = data.reply || data.message || "Executed successfully.";
-                log.innerHTML += "<br><span style='color:#39ff14;'>Aero: " + replyText + "</span>";
+                log.innerHTML += "<br><span style='color:#39ff14;'>AeRo Ai: " + replyText + "</span>";
                 log.scrollTop = log.scrollHeight;
             })
             .catch(err => {
@@ -697,18 +744,19 @@ if REMOTE_ACCESS_AVAILABLE:
 
     @app.route("/ask", methods=["POST"])
     def phone_ask():
-        data = request.json or {}
-        query = data.get("query", "")
-        if not query:
-            return jsonify({"status": "error", "message": "No query provided"}), 400
-        
-        comm.update_subtitle.emit(f"Web: {query}")
-        handled = control_laptop(query)
-        if not handled:
-            try:
+        try:
+            data = request.json or {}
+            query = data.get("query", "")
+            if not query:
+                return jsonify({"status": "error", "message": "No query provided"}), 400
+            
+            comm.update_subtitle.emit(f"Web: {query}")
+            
+            handled = control_laptop(query)
+            if not handled:
                 current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
                 system_prompt = (
-                    f"You are Aero AI, an advanced AI companion created for Omar. "
+                    f"You are AeRo Ai, an advanced AI companion created for Omar. "
                     f"Current date and time is {current_date_time}. "
                     f"You understand and reply fluently in Bengali, English, and Banglish (Bengali written in English letters). "
                     f"Do NOT translate the user's question. Directly answer what the user is asking in a friendly, human-like, conversational tone within 1-2 short sentences."
@@ -716,12 +764,15 @@ if REMOTE_ACCESS_AVAILABLE:
                 reply = ask_ai_brain(query, system_prompt)
                 speak(reply)
                 return jsonify({"status": "success", "reply": reply})
-            except Exception as e:
-                err_msg = str(e)
-                speak("Sorry sir, error processing AI response.")
-                return jsonify({"status": "error", "message": err_msg}), 500
-        else:
-            return jsonify({"status": "success", "reply": f"Command '{query}' executed successfully."})
+            else:
+                return jsonify({"status": "success", "reply": f"Command '{query}' executed successfully."})
+        except Exception as e:
+            print(f"Phone Ask Error: {e}")
+            try:
+                reply = ask_ai_brain(query, "You are AeRo Ai, answer helpfully in 1-2 sentences.")
+                return jsonify({"status": "success", "reply": reply})
+            except Exception as ex:
+                return jsonify({"status": "error", "message": str(ex)}), 500
 
 def run_flask_server(port):
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
@@ -733,12 +784,10 @@ def run_flask_server(port):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     
-    # Check if running on Render Cloud or if GEMINI_API_KEY is provided
     if os.environ.get("RENDER") or GEMINI_API_KEY:
-        print(f"Starting Aero AI Cloud Web Server on port {port}...")
+        print(f"Starting AeRo Ai Cloud Web Server on port {port}...")
         app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
     else:
-        # Local PC Execution: Run Flask in background thread, then start PyQt5 HUD
         if REMOTE_ACCESS_AVAILABLE:
             flask_thread = threading.Thread(target=run_flask_server, args=(port,), daemon=True)
             flask_thread.start()
@@ -746,15 +795,12 @@ if __name__ == "__main__":
 
         if PYQT_AVAILABLE:
             qt_app = QApplication(sys.argv)
-            
             voice_thread = threading.Thread(target=voice_listener_loop, daemon=True)
             voice_thread.start()
 
             hud = HologramHUD()
             hud.show()
-            
             speak("Stark holographic HUD initialized, Omar sir.")
-            
             sys.exit(qt_app.exec_())
         else:
             print("Running in console web-server mode.")
