@@ -71,28 +71,27 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
-
 # ============================================================
-# UNIFIED AI BRAIN (Gemini Legacy SDK for Cloud, Ollama for Local)
+# UNIFIED AI BRAIN (Direct & Stable Gemini for Cloud)
 # ============================================================
 
 def ask_ai_brain(prompt, system_prompt=""):
     """
-    Uses Google GenerativeAI Legacy SDK with robust fallback for Cloud execution.
+    Direct and reliable Google Gemini API call for Cloud execution.
     """
     if GEMINI_API_KEY:
         try:
             genai.configure(api_key=GEMINI_API_KEY)
-            for model_name in ["gemini-1.5-flash", "gemini-pro"]:
-                try:
-                    model = genai.GenerativeModel(model_name)
-                    full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
-                    response = model.generate_content(full_prompt)
-                    if response and response.text:
-                        return response.text
-                except Exception:
-                    continue
-            return "Sorry Omar sir, all Gemini cloud models failed to respond."
+            
+            # Using the stable and universal gemini-2.5-flash model
+            model = genai.GenerativeModel("gemini-2.5-flash")
+            full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
+            response = model.generate_content(full_prompt)
+            
+            if response and response.text:
+                return response.text
+            return "Sorry Omar sir, empty response from Gemini cloud."
+            
         except Exception as e:
             print(f"Gemini API Error: {e}")
             return f"Gemini Error: {str(e)}"
@@ -107,7 +106,6 @@ def ask_ai_brain(prompt, system_prompt=""):
         except Exception as e:
             print(f"Ollama Error: {e}")
             return f"Ollama Error: {str(e)}"
-
 # ============================================================
 # GLOBAL OBJECTS
 # ============================================================
