@@ -74,14 +74,14 @@ DUPLICATE_COMMAND_SECONDS = 1.5
 # ============================================================
 # UNIFIED AI BRAIN (Direct REST API for Cloud, Ollama for Local)
 # ============================================================
-
 def ask_ai_brain(prompt, system_prompt=""):
     """
-    Uses direct Google Gemini REST API to bypass all SDK/Model version mismatches on Cloud.
+    Uses direct Google Gemini REST API with the latest stable flash model.
     """
     if GEMINI_API_KEY:
         try:
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+            # Updated to gemini-2.0-flash / gemini-2.5-flash stable endpoint
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
             full_text = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
             
             payload = {
@@ -114,7 +114,6 @@ def ask_ai_brain(prompt, system_prompt=""):
         except Exception as e:
             print(f"Ollama Error: {e}")
             return f"Ollama Error: {str(e)}"
-
 # ============================================================
 # GLOBAL OBJECTS
 # ============================================================
