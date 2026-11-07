@@ -72,34 +72,21 @@ VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
 # ============================================================
-# UNIFIED AI BRAIN (Dynamic Gemini for Cloud, Ollama for Local)
+# UNIFIED AI BRAIN (Gemini 3.8 Flash for Cloud, Ollama for Local)
 # ============================================================
 
 def ask_ai_brain(prompt, system_prompt=""):
     """
-    Dynamically finds an available Gemini model on Render Cloud to permanently fix 404 errors.
+    Uses the latest recommended gemini-3.8-flash model for Render Cloud.
     """
     # 1. If Gemini API Key exists (Render Cloud)
     if GEMINI_API_KEY:
         try:
             genai.configure(api_key=GEMINI_API_KEY)
-            full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
             
-            # Find an available text-generation model dynamically
-            target_model_name = None
-            try:
-                for m in genai.list_models():
-                    if 'generateContent' in m.supported_generation_methods:
-                        target_model_name = m.name
-                        break
-            except Exception:
-                pass
-
-            # Fallback to standard model names if dynamic listing is restricted
-            if not target_model_name:
-                target_model_name = "gemini-1.5-flash"
-
-            model = genai.GenerativeModel(target_model_name)
+            # Using the exact recommended model name
+            model = genai.GenerativeModel("gemini-3.8-flash")
+            full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
             response = model.generate_content(full_prompt)
             
             if response and response.text:
