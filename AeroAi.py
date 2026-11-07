@@ -749,13 +749,39 @@ if REMOTE_ACCESS_AVAILABLE:
             
             comm.update_subtitle.emit(f"Web: {query}")
             
-            # Check desktop controls & website routing
-            handled, target_url = control_laptop(query)
+            # Smart Keyword Check for Website/Apps (Before AI Brain)
+            low_q = query.lower()
+            target_url = None
+            if "youtube" in low_q:
+                target_url = "https://www.youtube.com"
+            elif "google" in low_q:
+                target_url = "https://www.google.com"
+            elif "facebook" in low_q:
+                target_url = "https://www.facebook.com"
+            elif "instagram" in low_q:
+                target_url = "https://www.instagram.com"
+            elif "chatgpt" in low_q:
+                target_url = "https://chatgpt.com"
+            elif "github" in low_q:
+                target_url = "https://github.com"
+
+            if target_url:
+                if not os.environ.get("RENDER"):
+                    webbrowser.open(target_url)
+                speak(f"Opening requested site, sir.")
+                return jsonify({
+                    "status": "success", 
+                    "reply": f"Opening website for you, Omar sir!",
+                    "url": target_url
+                })
+
+            # Normal Desktop Controls
+            handled, desktop_url = control_laptop(query)
             if handled:
                 return jsonify({
                     "status": "success", 
                     "reply": f"Command '{query}' executed successfully.",
-                    "url": target_url
+                    "url": desktop_url
                 })
             
             # Fallback to AI Brain (Gemini REST / Ollama)
@@ -772,15 +798,7 @@ if REMOTE_ACCESS_AVAILABLE:
 
         except Exception as e:
             print(f"Phone Ask Error: {e}")
-            try:
-                reply = ask_ai_brain(query, "You are AeRo Ai, answer helpfully in 1-2 sentences.")
-                return jsonify({"status": "success", "reply": reply})
-            except Exception as ex:
-                return jsonify({"status": "error", "message": str(ex)}), 500
-
-def run_flask_server(port):
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
-
+            return jsonify({"status": "error", "message": str(e)}), 500
 # ============================================================
 # MAIN APPLICATION EXECUTION
 # ============================================================
