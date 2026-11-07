@@ -64,7 +64,7 @@ VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
 
 # ============================================================
-# LOCAL AI BRAIN (OLLAMA ONLY)
+# LOCAL AI BRAIN WITH HUMAN-LIKE SYSTEM PROMPT
 # ============================================================
 
 def ask_ai_brain(prompt, system_prompt=""):
@@ -219,18 +219,6 @@ def control_laptop(query_text):
             speak(f"Opening {key}, sir.")
             return True, url
 
-        # Specific file or app opening support using os.startfile
-        if "open file" in low_q or "file kholo" in low_q:
-            # Example target file path (Change or extend based on needs)
-            target_file = os.path.join(user_profile, "Desktop", "example.txt")
-            if os.path.exists(target_file):
-                os.startfile(target_file)
-                speak("File opened successfully, sir.")
-                return True, None
-            else:
-                speak("File not found on Desktop, sir.")
-                return True, None
-
         if "graphics" in low_q or "grafix" in low_q:
             if any(w in low_q for w in ["on", "start", "chalu", "enable", "open", "kholo", "khulo"]):
                 os.system("start ms-settings:display-advancedgraphics")
@@ -367,9 +355,10 @@ def voice_listener_loop():
                         if not handled:
                             current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
                             system_prompt = (
-                                f"You are AeRo Ai, an advanced AI companion created for Omar. "
+                                f"You are AeRo Ai, an advanced, highly intelligent, and friendly AI companion created for Omar. "
                                 f"Current date and time is {current_date_time}. "
-                                f"Reply fluently in Bengali, English, or Banglish in 1-2 short sentences."
+                                f"Always reply in a warm, conversational, human-like tone in Bengali, English, or Banglish depending on what Omar asks. "
+                                f"Keep your responses concise, smart, and direct within 1-2 short sentences, just like a true personal AI assistant."
                             )
                             reply = ask_ai_brain(query, system_prompt)
                             speak(reply)
@@ -455,9 +444,10 @@ if PYQT_AVAILABLE:
             if not handled:
                 current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
                 system_prompt = (
-                    f"You are AeRo Ai, an advanced AI companion created for Omar. "
+                    f"You are AeRo Ai, an advanced, highly intelligent, and friendly AI companion created for Omar. "
                     f"Current date and time is {current_date_time}. "
-                    f"Reply fluently in Bengali, English, or Banglish in 1-2 short sentences."
+                    f"Always reply in a warm, conversational, human-like tone in Bengali, English, or Banglish depending on what Omar asks. "
+                    f"Keep your responses concise, smart, and direct within 1-2 short sentences, just like a true personal AI assistant."
                 )
                 reply = ask_ai_brain(query, system_prompt)
                 speak(reply)
@@ -846,9 +836,10 @@ if REMOTE_ACCESS_AVAILABLE:
             
             current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
             system_prompt = (
-                f"You are AeRo Ai, an advanced AI companion created for Omar. "
+                f"You are AeRo Ai, an advanced, highly intelligent, and friendly AI companion created for Omar. "
                 f"Current date and time is {current_date_time}. "
-                f"Reply fluently in Bengali, English, or Banglish in 1-2 short sentences."
+                f"Always reply in a warm, conversational, human-like tone in Bengali, English, or Banglish depending on what Omar asks. "
+                f"Keep your responses concise, smart, and direct within 1-2 short sentences, just like a true personal AI assistant."
             )
             reply = ask_ai_brain(query, system_prompt)
             speak(reply)
