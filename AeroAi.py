@@ -12,6 +12,9 @@ import webbrowser
 from gtts import gTTS
 import ollama
 
+# Google Gemini API Import (For Cloud Execution)
+import google.generativeai as genai
+
 # Safe Desktop Libraries Import (Won't crash on Cloud)
 try:
     import pyautogui
@@ -63,9 +66,51 @@ except ImportError:
 # ============================================================
 
 OLLAMA_MODEL = os.environ.get("AERO_OLLAMA_MODEL", "llama3")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+
 VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
+
+# ============================================================
+# UNIFIED AI BRAIN (Ollama for Local, Gemini for Cloud)
+# ============================================================
+
+def ask_ai_brain(prompt, system_prompt=""):
+    """
+    Automatically switches between Gemini API (Cloud) and Ollama (Local)
+    based on environment availability.
+    """
+    # 1. If Gemini API Key exists (Render Cloud)
+    if GEMINI_API_KEY:
+        try:
+            genai.configure(api_key=GEMINI_API_KEY)
+            model = genai.GenerativeModel("gemini-1.5-flash")
+            
+            # Combine system prompt and user prompt for Gemini if system prompt exists
+            full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
+            response = model.generate_content(full_prompt)
+            return response.text
+        except Exception as e:
+            print(f"Gemini API Error: {e}")
+            return "Sorry Omar sir, error processing cloud AI response."
+            
+    # 2. Otherwise use local Ollama (Laptop)
+    else:
+        try:
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            
+            response = ollama.chat(
+                model=OLLAMA_MODEL, 
+                messages=messages
+            )
+            return response["message"]["content"]
+        except Exception as e:
+            print(f"Ollama Error: {e}")
+            return "Sorry Omar sir, error processing local Ollama response."
 
 # ============================================================
 # GLOBAL OBJECTS
@@ -81,7 +126,7 @@ last_command_text = ""
 last_command_time = 0.0
 
 # ============================================================
-# COMMUNICATION SIGNALS (FIXED)
+# COMMUNICATION SIGNALS
 # ============================================================
 
 class HUDComm(QObject if PYQT_AVAILABLE else object):
@@ -92,9 +137,6 @@ class HUDComm(QObject if PYQT_AVAILABLE else object):
     def __init__(self):
         if PYQT_AVAILABLE:
             super().__init__()
-        else:
-            self.status_text = ""
-            self.sub_text = ""
 
 comm = HUDComm()
 if not PYQT_AVAILABLE:
@@ -114,7 +156,7 @@ if DESKTOP_LIBS_AVAILABLE:
         print(f"Audio initialization error: {e}")
 
 # ============================================================
-# TEXT / SPEECH HELPERS (FAST BACKGROUND TTS)
+# TEXT / SPEECH HELPERS
 # ============================================================
 
 def contains_bangla(text):
@@ -416,19 +458,12 @@ def voice_listener_loop():
                                 f"You understand and reply fluently in Bengali, English, and Banglish (Bengali written in English letters). "
                                 f"Do NOT translate the user's question. Directly answer what the user is asking in a friendly, human-like, conversational tone within 1-2 short sentences."
                             )
-                            response = ollama.chat(
-                                model=OLLAMA_MODEL, 
-                                messages=[
-                                    {"role": "system", "content": system_prompt},
-                                    {"role": "user", "content": query}
-                                ]
-                            )
-                            reply = response["message"]["content"]
+                            reply = ask_ai_brain(query, system_prompt)
                             speak(reply)
                         except Exception as e:
-                            print(f"Ollama Error: {e}")
+                            print(f"AI Brain Error: {e}")
                             speak("Sorry Omar sir, error processing request.")
-            time.sleep(0.1)
+                time.sleep(0.1)
         except sr.WaitTimeoutError:
             comm.update_status.emit("STARK HUD // ONLINE")
             continue
@@ -540,7 +575,7 @@ if PYQT_AVAILABLE:
             painter.drawText(25, height - 15, self.sub_text[:50])
 
 # ============================================================
-# MOBILE WEB CONTROL & INTERFACE (FLASK) WITH WEB VOICE & TYPING BOX
+# MOBILE WEB CONTROL & INTERFACE (FLASK)
 # ============================================================
 
 HTML_INTERFACE = """<!DOCTYPE html>
@@ -677,14 +712,7 @@ if REMOTE_ACCESS_AVAILABLE:
                     f"You understand and reply fluently in Bengali, English, and Banglish (Bengali written in English letters). "
                     f"Do NOT translate the user's question. Directly answer what the user is asking in a friendly, human-like, conversational tone within 1-2 short sentences."
                 )
-                response = ollama.chat(
-                    model=OLLAMA_MODEL, 
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": query}
-                    ]
-                )
-                reply = response["message"]["content"]
+                reply = ask_ai_brain(query, system_prompt)
                 speak(reply)
                 return jsonify({"status": "success", "reply": reply})
             except Exception as e:
@@ -704,10 +732,12 @@ def run_flask_server(port):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     
-    if os.environ.get("RENDER") or not sys.stdin.isatty():
+    # Check if running on Render Cloud
+    if os.environ.get("RENDER"):
         print(f"Starting Aero AI Cloud Web Server on port {port}...")
         app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
     else:
+        # Local PC Execution: Run Flask in background thread, then start PyQt5 HUD
         if REMOTE_ACCESS_AVAILABLE:
             flask_thread = threading.Thread(target=run_flask_server, args=(port,), daemon=True)
             flask_thread.start()
