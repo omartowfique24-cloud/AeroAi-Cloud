@@ -719,7 +719,6 @@ HTML_INTERFACE = """<!DOCTYPE html>
                 log.innerHTML += "<br><span style='color:#39ff14;'>AeRo Ai: " + replyText + "</span>";
                 log.scrollTop = log.scrollHeight;
 
-                // If backend returned a website URL, open it in client browser automatically!
                 if(data.url) {
                     window.open(data.url, '_blank');
                 }
@@ -749,29 +748,15 @@ if REMOTE_ACCESS_AVAILABLE:
             
             comm.update_subtitle.emit(f"Web: {query}")
             
-            # Smart Keyword Check for Website/Apps (Before AI Brain)
-            low_q = query.lower()
-            target_url = None
-            if "youtube" in low_q:
-                target_url = "https://www.youtube.com"
-            elif "google" in low_q:
-                target_url = "https://www.google.com"
-            elif "facebook" in low_q:
-                target_url = "https://www.facebook.com"
-            elif "instagram" in low_q:
-                target_url = "https://www.instagram.com"
-            elif "chatgpt" in low_q:
-                target_url = "https://chatgpt.com"
-            elif "github" in low_q:
-                target_url = "https://github.com"
-
-            if target_url:
+            # Direct Website Opening Check (Fast & Reliable)
+            key, target_url = get_matched_website_url(query)
+            if key:
                 if not os.environ.get("RENDER"):
                     webbrowser.open(target_url)
-                speak(f"Opening requested site, sir.")
+                speak(f"Opening {key}, sir.")
                 return jsonify({
                     "status": "success", 
-                    "reply": f"Opening website for you, Omar sir!",
+                    "reply": f"Opening {key} for you, Omar sir!",
                     "url": target_url
                 })
 
@@ -799,6 +784,10 @@ if REMOTE_ACCESS_AVAILABLE:
         except Exception as e:
             print(f"Phone Ask Error: {e}")
             return jsonify({"status": "error", "message": str(e)}), 500
+
+def run_flask_server(port):
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+
 # ============================================================
 # MAIN APPLICATION EXECUTION
 # ============================================================
