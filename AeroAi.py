@@ -85,7 +85,8 @@ def ask_ai_brain(prompt, system_prompt=""):
     if GEMINI_API_KEY:
         try:
             genai.configure(api_key=GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            # Using gemini-pro for stable legacy SDK compatibility on Render Cloud
+            model = genai.GenerativeModel("gemini-pro")
             
             # Combine system prompt and user prompt for Gemini if system prompt exists
             full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
@@ -93,7 +94,6 @@ def ask_ai_brain(prompt, system_prompt=""):
             return response.text
         except Exception as e:
             print(f"Gemini API Error: {e}")
-            # Returning exact error to debug on web HUD
             return f"Gemini Error: {str(e)}"
             
     # 2. Otherwise use local Ollama (Laptop)
