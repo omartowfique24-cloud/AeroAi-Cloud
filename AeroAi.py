@@ -72,19 +72,19 @@ VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
 # ============================================================
-# UNIFIED AI BRAIN (Direct & Stable Gemini for Cloud)
+# UNIFIED AI BRAIN (Gemini 3.8 Flash for Cloud Execution)
 # ============================================================
 
 def ask_ai_brain(prompt, system_prompt=""):
     """
-    Direct and reliable Google Gemini API call for Cloud execution.
+    Uses the exact recommended gemini-3.8-flash model for Render Cloud.
     """
     if GEMINI_API_KEY:
         try:
             genai.configure(api_key=GEMINI_API_KEY)
             
-            # Using the stable and universal gemini-2.5-flash model
-            model = genai.GenerativeModel("gemini-2.5-flash")
+            # Using the exact model recommended by Google API
+            model = genai.GenerativeModel("gemini-3.8-flash")
             full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
             response = model.generate_content(full_prompt)
             
