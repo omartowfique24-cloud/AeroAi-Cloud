@@ -846,8 +846,8 @@ if REMOTE_ACCESS_AVAILABLE:
             return jsonify({"status": "success", "reply": reply})
 
         except Exception as e:
-            print(f"Ask Error: {e}")
-            return jsonify({"status": "error", "message": str(e)}), 500
+            print(f"Flask Ask Error: {e}")
+            return jsonify({"status": "error", "reply": f"Local AI Error: {str(e)}"}), 500
 
 def run_flask_server(port):
     app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
