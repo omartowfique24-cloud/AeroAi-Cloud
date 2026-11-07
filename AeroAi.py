@@ -76,12 +76,12 @@ DUPLICATE_COMMAND_SECONDS = 1.5
 # ============================================================
 def ask_ai_brain(prompt, system_prompt=""):
     """
-    Uses direct Google Gemini REST API with the latest stable flash model.
+    Uses direct Google Gemini REST API with the universally supported flash model.
     """
     if GEMINI_API_KEY:
         try:
-            # Updated to gemini-2.0-flash / gemini-2.5-flash stable endpoint
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+            # Using the stable general-purpose gemini-flash endpoint
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
             full_text = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
             
             payload = {
