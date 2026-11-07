@@ -93,7 +93,8 @@ def ask_ai_brain(prompt, system_prompt=""):
             return response.text
         except Exception as e:
             print(f"Gemini API Error: {e}")
-            return "Sorry Omar sir, error processing cloud AI response."
+            # Returning exact error to debug on web HUD
+            return f"Gemini Error: {str(e)}"
             
     # 2. Otherwise use local Ollama (Laptop)
     else:
@@ -110,7 +111,7 @@ def ask_ai_brain(prompt, system_prompt=""):
             return response["message"]["content"]
         except Exception as e:
             print(f"Ollama Error: {e}")
-            return "Sorry Omar sir, error processing local Ollama response."
+            return f"Ollama Error: {str(e)}"
 
 # ============================================================
 # GLOBAL OBJECTS
