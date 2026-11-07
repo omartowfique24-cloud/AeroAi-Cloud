@@ -71,23 +71,35 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
-
 # ============================================================
-# UNIFIED AI BRAIN (Gemini Legacy SDK for Cloud, Ollama for Local)
+# UNIFIED AI BRAIN (Dynamic Gemini for Cloud, Ollama for Local)
 # ============================================================
 
 def ask_ai_brain(prompt, system_prompt=""):
     """
-    Direct and stable Gemini API call using gemini-pro for Cloud execution.
+    Dynamically finds an available Gemini model on Render Cloud to permanently fix 404 errors.
     """
     # 1. If Gemini API Key exists (Render Cloud)
     if GEMINI_API_KEY:
         try:
             genai.configure(api_key=GEMINI_API_KEY)
-            
-            # Using standard gemini-pro which is widely supported for API keys
-            model = genai.GenerativeModel("gemini-pro")
             full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
+            
+            # Find an available text-generation model dynamically
+            target_model_name = None
+            try:
+                for m in genai.list_models():
+                    if 'generateContent' in m.supported_generation_methods:
+                        target_model_name = m.name
+                        break
+            except Exception:
+                pass
+
+            # Fallback to standard model names if dynamic listing is restricted
+            if not target_model_name:
+                target_model_name = "gemini-1.5-flash"
+
+            model = genai.GenerativeModel(target_model_name)
             response = model.generate_content(full_prompt)
             
             if response and response.text:
@@ -114,7 +126,6 @@ def ask_ai_brain(prompt, system_prompt=""):
         except Exception as e:
             print(f"Ollama Error: {e}")
             return f"Ollama Error: {str(e)}"
-
 # ============================================================
 # GLOBAL OBJECTS
 # ============================================================
