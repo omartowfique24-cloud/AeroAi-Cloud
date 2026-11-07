@@ -8,12 +8,11 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.request
+import json
 import webbrowser
 from gtts import gTTS
 import ollama
-
-# Google Gemini API Import (Stable Legacy SDK for Cloud Execution)
-import google.generativeai as genai
 
 # Safe Desktop Libraries Import (Won't crash on Cloud)
 try:
@@ -71,29 +70,38 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
+
 # ============================================================
-# UNIFIED AI BRAIN (Gemini 3.8 Flash for Cloud Execution)
+# UNIFIED AI BRAIN (Direct REST API for Cloud, Ollama for Local)
 # ============================================================
 
 def ask_ai_brain(prompt, system_prompt=""):
     """
-    Uses the exact recommended gemini-3.8-flash model for Render Cloud.
+    Uses direct Google Gemini REST API to bypass all SDK/Model version mismatches on Cloud.
     """
     if GEMINI_API_KEY:
         try:
-            genai.configure(api_key=GEMINI_API_KEY)
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={GEMINI_API_KEY}"
+            full_text = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
             
-            # Using the exact model recommended by Google API
-            model = genai.GenerativeModel("gemini-3.8-flash")
-            full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
-            response = model.generate_content(full_prompt)
+            payload = {
+                "contents": [{
+                    "parts": [{"text": full_text}]
+                }]
+            }
             
-            if response and response.text:
-                return response.text
+            data = json.dumps(payload).encode("utf-8")
+            req = urllib.request.Request(url, data=data, headers={'Content-Type': 'application/json'})
+            
+            with urllib.request.urlopen(req, timeout=10) as response:
+                result = json.loads(response.read().decode("utf-8"))
+                candidate = result.get("candidates", [{}])[0]
+                text = candidate.get("content", {}).get("parts", [{}])[0].get("text", "")
+                if text:
+                    return text
             return "Sorry Omar sir, empty response from Gemini cloud."
-            
         except Exception as e:
-            print(f"Gemini API Error: {e}")
+            print(f"Gemini REST Error: {e}")
             return f"Gemini Error: {str(e)}"
     else:
         try:
@@ -106,6 +114,7 @@ def ask_ai_brain(prompt, system_prompt=""):
         except Exception as e:
             print(f"Ollama Error: {e}")
             return f"Ollama Error: {str(e)}"
+
 # ============================================================
 # GLOBAL OBJECTS
 # ============================================================
@@ -400,7 +409,7 @@ def voice_listener_loop():
                         try:
                             current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
                             system_prompt = (
-                                f"You are Aero AI, an advanced AI companion created for Omar. "
+                                f"You are AeRo Ai, an advanced AI companion created for Omar. "
                                 f"Current date and time is {current_date_time}. "
                                 f"You understand and reply fluently in Bengali, English, and Banglish (Bengali written in English letters). "
                                 f"Do NOT translate the user's question. Directly answer what the user is asking in a friendly, human-like, conversational tone within 1-2 short sentences."
@@ -533,16 +542,13 @@ HTML_INTERFACE = """<!DOCTYPE html>
     <style>
         body { background-color: #030810; color: #00f0ff; font-family: 'Consolas', 'Segoe UI', sans-serif; text-align: center; padding: 10px; margin: 0; overflow-x: hidden; }
         
-        /* Stark Expo Top Bar */
         .top-bar { display: flex; justify-content: space-between; align-items: center; max-width: 440px; margin: 0 auto 8px auto; padding: 8px 14px; background: rgba(5, 20, 35, 0.85); border: 1px solid #00f0ff; border-radius: 8px; font-size: 13px; box-shadow: 0 0 15px rgba(0, 240, 255, 0.3); }
         .brand { color: #39ff14; font-weight: bold; text-shadow: 0 0 10px #39ff14; font-size: 17px; letter-spacing: 2px; }
         .info-pill { color: #00f0ff; font-weight: bold; text-shadow: 0 0 5px rgba(0, 240, 255, 0.5); }
         
-        /* Hologram Earth Canvas Styles */
         .hud-container { position: relative; width: 120px; height: 120px; margin: 0 auto 8px auto; }
         canvas { width: 120px; height: 120px; border-radius: 50%; box-shadow: 0 0 20px rgba(0, 240, 255, 0.7), inset 0 0 15px rgba(0, 240, 255, 0.5); background: radial-gradient(circle, #011627 0%, #000 100%); }
 
-        /* Main Stark Terminal Card */
         .card { background: rgba(5, 18, 32, 0.92); border: 2px solid #00f0ff; border-radius: 12px; padding: 18px; max-width: 410px; margin: 0 auto; box-shadow: 0 0 25px rgba(0, 240, 255, 0.4), inset 0 0 10px rgba(0, 240, 255, 0.15); }
         h1 { color: #39ff14; font-size: 20px; text-shadow: 0 0 12px #39ff14; margin: 2px 0 10px 0; letter-spacing: 1px; }
         p { margin: 5px 0 12px 0; font-size: 13px; color: #8ab4f8; }
@@ -561,19 +567,16 @@ HTML_INTERFACE = """<!DOCTYPE html>
     </style>
 </head>
 <body>
-    <!-- Stark Industries HUD Top Bar with AeRo Ai, Date & Temp -->
     <div class="top-bar">
         <div class="brand">AeRo Ai</div>
         <div class="info-pill" id="date-time">Loading...</div>
         <div class="info-pill" id="temp">28°C</div>
     </div>
 
-    <!-- 3D Holographic Rotating Earth -->
     <div class="hud-container">
         <canvas id="earthCanvas" width="120" height="120"></canvas>
     </div>
 
-    <!-- Main Stark Control Card -->
     <div class="card">
         <h1>⚡ STARK AERO HUD</h1>
         <p>Omar Sir's Remote Terminal</p>
@@ -587,7 +590,6 @@ HTML_INTERFACE = """<!DOCTYPE html>
     </div>
 
     <script>
-        // Live Date & Time Sync
         function updateDateTime() {
             const now = new Date();
             const options = { month: 'short', day: 'numeric' };
@@ -598,7 +600,6 @@ HTML_INTERFACE = """<!DOCTYPE html>
         setInterval(updateDateTime, 1000);
         updateDateTime();
 
-        // Holographic Rotating Earth Animation (Stark HUD Style)
         const canvas = document.getElementById('earthCanvas');
         const ctx = canvas.getContext('2d');
         let angle = 0;
@@ -609,7 +610,6 @@ HTML_INTERFACE = """<!DOCTYPE html>
             let cy = canvas.height / 2;
             let radius = 48;
 
-            // Outer Radar Scan Ring
             ctx.beginPath();
             ctx.arc(cx, cy, radius + 6, 0, Math.PI * 2);
             ctx.strokeStyle = 'rgba(0, 240, 255, 0.25)';
@@ -618,7 +618,6 @@ HTML_INTERFACE = """<!DOCTYPE html>
             ctx.stroke();
             ctx.setLineDash([]);
 
-            // Earth Sphere Base
             ctx.beginPath();
             ctx.arc(cx, cy, radius, 0, Math.PI * 2);
             ctx.fillStyle = '#01192e';
@@ -627,7 +626,6 @@ HTML_INTERFACE = """<!DOCTYPE html>
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // Rotating Longitude Grid Lines
             ctx.save();
             ctx.beginPath();
             ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -643,7 +641,6 @@ HTML_INTERFACE = """<!DOCTYPE html>
                 ctx.stroke();
             }
 
-            // Latitude Equator Lines
             ctx.beginPath();
             ctx.moveTo(cx - radius, cy - 18); ctx.lineTo(cx + radius, cy - 18);
             ctx.moveTo(cx - radius, cy + 18); ctx.lineTo(cx + radius, cy + 18);
