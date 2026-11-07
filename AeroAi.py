@@ -78,25 +78,22 @@ DUPLICATE_COMMAND_SECONDS = 1.5
 
 def ask_ai_brain(prompt, system_prompt=""):
     """
-    Uses Google GenerativeAI Legacy SDK with robust fallback for Cloud execution.
+    Direct and stable Gemini API call using gemini-pro for Cloud execution.
     """
     # 1. If Gemini API Key exists (Render Cloud)
     if GEMINI_API_KEY:
         try:
             genai.configure(api_key=GEMINI_API_KEY)
             
-            # Trying stable legacy models sequentially
-            for model_name in ["gemini-1.5-flash", "gemini-pro"]:
-                try:
-                    model = genai.GenerativeModel(model_name)
-                    full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
-                    response = model.generate_content(full_prompt)
-                    if response and response.text:
-                        return response.text
-                except Exception:
-                    continue
-                    
-            return "Sorry Omar sir, all Gemini cloud models failed to respond."
+            # Using standard gemini-pro which is widely supported for API keys
+            model = genai.GenerativeModel("gemini-pro")
+            full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
+            response = model.generate_content(full_prompt)
+            
+            if response and response.text:
+                return response.text
+            return "Sorry Omar sir, empty response from Gemini cloud."
+            
         except Exception as e:
             print(f"Gemini API Error: {e}")
             return f"Gemini Error: {str(e)}"
