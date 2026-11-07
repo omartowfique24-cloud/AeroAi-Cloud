@@ -12,8 +12,8 @@ import webbrowser
 from gtts import gTTS
 import ollama
 
-# Google GenAI SDK Import (New Standard for Cloud Execution)
-from google import genai
+# Google Gemini API Import (Stable Legacy SDK for Cloud Execution)
+import google.generativeai as genai
 
 # Safe Desktop Libraries Import (Won't crash on Cloud)
 try:
@@ -84,16 +84,12 @@ def ask_ai_brain(prompt, system_prompt=""):
     # 1. If Gemini API Key exists (Render Cloud)
     if GEMINI_API_KEY:
         try:
-            # New GenAI Client Initialization
-            client = genai.Client(api_key=GEMINI_API_KEY)
+            genai.configure(api_key=GEMINI_API_KEY)
+            model = genai.GenerativeModel("gemini-1.5-flash")
             
             # Combine system prompt and user prompt for Gemini if system prompt exists
             full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
-            
-            response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=full_prompt,
-            )
+            response = model.generate_content(full_prompt)
             return response.text
         except Exception as e:
             print(f"Gemini API Error: {e}")
