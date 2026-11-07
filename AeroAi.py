@@ -437,7 +437,7 @@ if PYQT_AVAILABLE:
             self.setGeometry(100, 100, 420, 420)
 
             self.angle = 0
-            self.status_text = "STARK HUD // ONLINE"
+            self.status_text = "HUD // ONLINE"
             self.sub_text = "Aero is ready, Omar sir."
 
             self.timer = QTimer(self)
@@ -491,133 +491,107 @@ if PYQT_AVAILABLE:
             painter.drawArc(-160, -160, 320, 320, 225 * 16, 90 * 16)
             painter.restore()
 
-            painter.save()
-            painter.translate(center)
-            painter.rotate(-self.angle * 1.5)
-            painter.setPen(QPen(QColor(0, 240, 255, 200), 2, Qt.DotLine))
-            painter.drawEllipse(-120, -120, 240, 240)
-            painter.restore()
-
             core_brush = QBrush(QColor(0, 240, 255, 30))
             painter.setBrush(core_brush)
             painter.setPen(QPen(QColor(0, 240, 255, 220), 2))
             painter.drawEllipse(center, 80, 80)
 
-            painter.setPen(QColor(0, 240, 255))
-            painter.setFont(QFont("Consolas", 9, QFont.Bold))
-            painter.drawText(center.x() - 55, center.y() - 25, "STARK EXPO")
-            
             painter.setPen(QColor(57, 255, 20))
-            painter.setFont(QFont("Consolas", 8))
-            painter.drawText(center.x() - 45, center.y() - 5, "AEPO AI")
+            painter.setFont(QFont("Consolas", 10, QFont.Bold))
+            painter.drawText(center.x() - 35, center.y() - 5, "AeRo Ai")
 
             current_time = datetime.datetime.now().strftime("%H:%M:%S")
             painter.setPen(QColor(255, 255, 255))
-            painter.setFont(QFont("Consolas", 10, QFont.Bold))
-            painter.drawText(center.x() - 38, center.y() + 20, current_time)
-
-            painter.setPen(QColor(0, 240, 255))
-            painter.setFont(QFont("Consolas", 9))
-            painter.drawText(20, height - 45, f">> {self.status_text}")
-
-            painter.setPen(QColor(255, 255, 255))
-            painter.setFont(QFont("Segoe UI", 9))
-            painter.setBrush(QBrush(QColor(5, 15, 30, 200)))
-            painter.setPen(QPen(QColor(0, 240, 255, 100), 1))
-            painter.drawRoundedRect(15, height - 35, width - 30, 30, 6, 6)
-            painter.drawText(25, height - 15, self.sub_text[:50])
+            painter.setFont(QFont("Consolas", 9, QFont.Bold))
+            painter.drawText(center.x() - 32, center.y() + 18, current_time)
 
 # ============================================================
-# MOBILE WEB CONTROL & INTERFACE (FLASK)
+# MOBILE WEB CONTROL & INTERFACE (FLASK) - UPDATED DESIGN
 # ============================================================
 
 HTML_INTERFACE = """<!DOCTYPE html>
 <html>
 <head>
-    <title>AeRo Ai - Stark HUD</title>
+    <title>AeRo Ai - Neural Terminal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { background-color: #030810; color: #00f0ff; font-family: 'Consolas', 'Segoe UI', sans-serif; text-align: center; padding: 10px; margin: 0; overflow-x: hidden; }
+        body { background-color: #02060c; color: #00f0ff; font-family: 'Consolas', 'Segoe UI', sans-serif; text-align: center; padding: 10px; margin: 0; overflow-x: hidden; }
         
-        .top-bar { display: flex; justify-content: space-between; align-items: center; max-width: 440px; margin: 0 auto 8px auto; padding: 8px 14px; background: rgba(5, 20, 35, 0.85); border: 1px solid #00f0ff; border-radius: 8px; font-size: 13px; box-shadow: 0 0 15px rgba(0, 240, 255, 0.3); }
-        .brand { color: #39ff14; font-weight: bold; text-shadow: 0 0 10px #39ff14; font-size: 17px; letter-spacing: 2px; }
-        .info-pill { color: #00f0ff; font-weight: bold; text-shadow: 0 0 5px rgba(0, 240, 255, 0.5); }
+        .main-wrapper { display: flex; flex-direction: row; justify-content: center; align-items: flex-start; max-width: 520px; margin: 15px auto; gap: 12px; }
         
-        .hud-container { position: relative; width: 120px; height: 120px; margin: 0 auto 8px auto; }
-        canvas { width: 120px; height: 120px; border-radius: 50%; box-shadow: 0 0 20px rgba(0, 240, 255, 0.7), inset 0 0 15px rgba(0, 240, 255, 0.5); background: radial-gradient(circle, #011627 0%, #000 100%); }
+        /* Left Side: Earth Map & Temperature Widget */
+        .left-panel { display: flex; flex-direction: column; align-items: center; background: rgba(5, 18, 32, 0.9); border: 1px solid #00f0ff; border-radius: 12px; padding: 10px; box-shadow: 0 0 15px rgba(0, 240, 255, 0.3); width: 130px; }
+        .globe-container { position: relative; width: 110px; height: 110px; margin-bottom: 8px; }
+        
+        /* Detailed Earth Map Canvas with Country Borders & Continents */
+        canvas { width: 110px; height: 110px; border-radius: 50%; box-shadow: 0 0 15px rgba(0, 240, 255, 0.6), inset 0 0 12px rgba(0, 240, 255, 0.4); background: radial-gradient(circle, #002b49 0%, #000b18 100%); }
+        
+        .temp-box { background: rgba(0, 240, 255, 0.1); border: 1px solid rgba(0, 240, 255, 0.4); border-radius: 6px; padding: 6px; width: 100%; font-size: 13px; color: #39ff14; font-weight: bold; text-shadow: 0 0 5px #39ff14; }
 
-        .card { background: rgba(5, 18, 32, 0.92); border: 2px solid #00f0ff; border-radius: 12px; padding: 18px; max-width: 410px; margin: 0 auto; box-shadow: 0 0 25px rgba(0, 240, 255, 0.4), inset 0 0 10px rgba(0, 240, 255, 0.15); }
-        h1 { color: #39ff14; font-size: 20px; text-shadow: 0 0 12px #39ff14; margin: 2px 0 10px 0; letter-spacing: 1px; }
-        p { margin: 5px 0 12px 0; font-size: 13px; color: #8ab4f8; }
+        /* Right / Center Panel: Typing Pad & Main Terminal */
+        .card { background: rgba(5, 18, 32, 0.95); border: 2px solid #00f0ff; border-radius: 12px; padding: 16px; flex: 1; box-shadow: 0 0 25px rgba(0, 240, 255, 0.4), inset 0 0 10px rgba(0, 240, 255, 0.15); text-align: center; }
         
-        input[type="text"] { width: 85%; padding: 12px; border: 1px solid #00f0ff; background: #000; color: #39ff14; border-radius: 6px; font-size: 15px; margin-bottom: 12px; outline: none; box-shadow: inset 0 0 8px rgba(0, 240, 255, 0.3); }
+        .brand-title { color: #39ff14; font-size: 22px; font-weight: bold; text-shadow: 0 0 12px #39ff14; margin: 0 0 12px 0; letter-spacing: 2px; }
+        
+        input[type="text"] { width: 90%; padding: 12px; border: 1px solid #00f0ff; background: #000; color: #39ff14; border-radius: 6px; font-size: 15px; margin-bottom: 12px; outline: none; box-shadow: inset 0 0 8px rgba(0, 240, 255, 0.3); }
         input[type="text"]::placeholder { color: rgba(0, 240, 255, 0.4); }
 
-        .btn-group { display: flex; gap: 10px; justify-content: center; }
-        button { background: #00f0ff; color: #000; border: none; padding: 10px 16px; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; transition: 0.3s; flex: 1; box-shadow: 0 0 10px rgba(0, 240, 255, 0.4); }
+        .btn-group { display: flex; gap: 8px; justify-content: center; }
+        button { background: #00f0ff; color: #000; border: none; padding: 10px 14px; border-radius: 6px; font-weight: bold; font-size: 13px; cursor: pointer; transition: 0.3s; flex: 1; box-shadow: 0 0 10px rgba(0, 240, 255, 0.4); }
         button:hover { background: #39ff14; box-shadow: 0 0 15px #39ff14; color: #000; }
         
         #mic-btn { background: #ff0055; color: #fff; box-shadow: 0 0 10px rgba(255, 0, 85, 0.4); }
         #mic-btn.listening { background: #39ff14; color: #000; box-shadow: 0 0 15px #39ff14; }
         
-        #log { margin-top: 15px; color: #fff; font-size: 13px; text-align: left; background: #000; padding: 12px; border-radius: 6px; height: 130px; overflow-y: auto; border: 1px solid #39ff14; box-shadow: inset 0 0 10px rgba(57, 255, 20, 0.2); }
+        #log { margin-top: 14px; color: #fff; font-size: 12px; text-align: left; background: #000; padding: 10px; border-radius: 6px; height: 120px; overflow-y: auto; border: 1px solid #39ff14; box-shadow: inset 0 0 10px rgba(57, 255, 20, 0.2); }
     </style>
 </head>
 <body>
-    <div class="top-bar">
-        <div class="brand">AeRo Ai</div>
-        <div class="info-pill" id="date-time">Loading...</div>
-        <div class="info-pill" id="temp">28°C</div>
-    </div>
-
-    <div class="hud-container">
-        <canvas id="earthCanvas" width="120" height="120"></canvas>
-    </div>
-
-    <div class="card">
-        <h1>⚡ STARK AERO HUD</h1>
-        <p>Omar Sir's Remote Terminal</p>
-        <input type="text" id="cmd" placeholder="Type or speak command..." onkeydown="if(event.key === 'Enter') sendCommand()">
-        <br>
-        <div class="btn-group">
-            <button onclick="sendCommand()">EXECUTE</button>
-            <button id="mic-btn" onclick="toggleVoice()">🎙️ SPEAK</button>
+    <div class="main-wrapper">
+        <!-- Left Side: Earth Map & Temperature -->
+        <div class="left-panel">
+            <div class="globe-container">
+                <canvas id="earthCanvas" width="110" height="110"></canvas>
+            </div>
+            <div class="temp-box" id="temp-display">28°C</div>
         </div>
-        <div id="log">System Online...</div>
+
+        <!-- Center/Right Panel: Main Typing Pad & Terminal -->
+        <div class="card">
+            <div class="brand-title">AeRo Ai</div>
+            <input type="text" id="cmd" placeholder="Type or speak command..." onkeydown="if(event.key === 'Enter') sendCommand()">
+            <div class="btn-group">
+                <button onclick="sendCommand()">EXECUTE</button>
+                <button id="mic-btn" onclick="toggleVoice()">🎙️ SPEAK</button>
+            </div>
+            <div id="log">System Online...</div>
+        </div>
     </div>
 
     <script>
-        function updateDateTime() {
-            const now = new Date();
-            const options = { month: 'short', day: 'numeric' };
-            const dateStr = now.toLocaleDateString('en-US', options);
-            const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            document.getElementById("date-time").innerText = `${dateStr} | ${timeStr}`;
-        }
-        setInterval(updateDateTime, 1000);
-        updateDateTime();
-
         const canvas = document.getElementById('earthCanvas');
         const ctx = canvas.getContext('2d');
         let angle = 0;
 
-        function drawEarth() {
+        function drawEarthMap() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             let cx = canvas.width / 2;
             let cy = canvas.height / 2;
-            let radius = 48;
+            let radius = 50;
 
+            // Outer ring
             ctx.beginPath();
-            ctx.arc(cx, cy, radius + 6, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(0, 240, 255, 0.25)';
+            ctx.arc(cx, cy, radius + 3, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.3)';
             ctx.lineWidth = 1;
-            ctx.setLineDash([4, 4]);
+            ctx.setLineDash([2, 2]);
             ctx.stroke();
             ctx.setLineDash([]);
 
+            // Base globe ocean
             ctx.beginPath();
             ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-            ctx.fillStyle = '#01192e';
+            ctx.fillStyle = '#001830';
             ctx.fill();
             ctx.strokeStyle = '#00f0ff';
             ctx.lineWidth = 2;
@@ -628,27 +602,52 @@ HTML_INTERFACE = """<!DOCTYPE html>
             ctx.arc(cx, cy, radius, 0, Math.PI * 2);
             ctx.clip();
 
-            ctx.strokeStyle = 'rgba(0, 240, 255, 0.45)';
-            ctx.lineWidth = 1.5;
+            // Simulated Detailed Country Borders & Continents (Polygon Grid)
+            ctx.fillStyle = 'rgba(57, 255, 20, 0.25)';
+            ctx.strokeStyle = 'rgba(57, 255, 20, 0.7)';
+            ctx.lineWidth = 1;
 
-            for (let i = -3; i <= 3; i++) {
-                let xOffset = Math.sin(angle + i * 0.7) * radius;
+            // Drawing dynamic continent landmasses representing country borders
+            for (let i = -4; i <= 4; i++) {
+                let xShift = Math.sin(angle + i * 0.8) * (radius * 0.7);
                 ctx.beginPath();
-                ctx.ellipse(cx + xOffset * 0.5, cy, Math.abs(xOffset), radius, 0, 0, Math.PI * 2);
+                ctx.ellipse(cx + xShift, cy + (i * 8), 18, 32, i * 0.3, 0, Math.PI * 2);
+                ctx.fill();
                 ctx.stroke();
             }
 
-            ctx.beginPath();
-            ctx.moveTo(cx - radius, cy - 18); ctx.lineTo(cx + radius, cy - 18);
-            ctx.moveTo(cx - radius, cy + 18); ctx.lineTo(cx + radius, cy + 18);
-            ctx.strokeStyle = 'rgba(57, 255, 20, 0.45)';
-            ctx.stroke();
+            // Meridian & Latitude Grid lines for Map navigation
+            ctx.strokeStyle = 'rgba(0, 240, 255, 0.35)';
+            ctx.lineWidth = 1;
+            for(let j = -2; j <= 2; j++) {
+                ctx.beginPath();
+                ctx.arc(cx + (j * 15), cy, radius, -Math.PI/2, Math.PI/2);
+                ctx.stroke();
+            }
 
             ctx.restore();
-            angle += 0.025;
-            requestAnimationFrame(drawEarth);
+
+            // Center Logo inside Earth
+            ctx.beginPath();
+            ctx.arc(cx, cy, 20, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(3, 8, 16, 0.85)';
+            ctx.fill();
+            ctx.strokeStyle = '#39ff14';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            ctx.fillStyle = '#39ff14';
+            ctx.font = 'bold 9px Consolas';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText("AeRo", cx, cy - 3);
+            ctx.fillStyle = '#00f0ff';
+            ctx.fillText("AI", cx, cy + 7);
+
+            angle += 0.015;
+            requestAnimationFrame(drawEarthMap);
         }
-        drawEarth();
+        drawEarthMap();
 
         let recognition;
         let isListening = false;
