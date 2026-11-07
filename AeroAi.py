@@ -12,8 +12,8 @@ import webbrowser
 from gtts import gTTS
 import ollama
 
-# Google Gemini API Import (For Cloud Execution)
-import google.generativeai as genai
+# Google GenAI SDK Import (New Standard for Cloud Execution)
+from google import genai
 
 # Safe Desktop Libraries Import (Won't crash on Cloud)
 try:
@@ -73,7 +73,7 @@ VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
 
 # ============================================================
-# UNIFIED AI BRAIN (Ollama for Local, Gemini for Cloud)
+# UNIFIED AI BRAIN (Gemini for Cloud, Ollama for Local)
 # ============================================================
 
 def ask_ai_brain(prompt, system_prompt=""):
@@ -84,12 +84,16 @@ def ask_ai_brain(prompt, system_prompt=""):
     # 1. If Gemini API Key exists (Render Cloud)
     if GEMINI_API_KEY:
         try:
-            genai.configure(api_key=GEMINI_API_KEY)
-            model = genai.GenerativeModel("gemini-1.5-flash")
+            # New GenAI Client Initialization
+            client = genai.Client(api_key=GEMINI_API_KEY)
             
             # Combine system prompt and user prompt for Gemini if system prompt exists
             full_prompt = f"{system_prompt}\n\nUser: {prompt}" if system_prompt else prompt
-            response = model.generate_content(full_prompt)
+            
+            response = client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=full_prompt,
+            )
             return response.text
         except Exception as e:
             print(f"Gemini API Error: {e}")
@@ -732,8 +736,8 @@ def run_flask_server(port):
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     
-    # Check if running on Render Cloud
-    if os.environ.get("RENDER"):
+    # Check if running on Render Cloud or if GEMINI_API_KEY is provided
+    if os.environ.get("RENDER") or GEMINI_API_KEY:
         print(f"Starting Aero AI Cloud Web Server on port {port}...")
         app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
     else:
