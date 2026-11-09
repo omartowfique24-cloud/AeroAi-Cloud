@@ -2,13 +2,15 @@ import datetime
 import io
 import math
 import os
-import queue
+import random
 import re
+import smtplib
 import subprocess
 import sys
 import threading
 import time
 import webbrowser
+from email.message import EmailMessage
 from gtts import gTTS
 import ollama
 
@@ -21,7 +23,7 @@ try:
 except ImportError:
     DESKTOP_LIBS_AVAILABLE = False
 
-# Flask Import for Local Web Interface
+# Flask Import for Local Web Interface & Remote Access
 try:
     from flask import Flask, request, jsonify, render_template_string
     REMOTE_ACCESS_AVAILABLE = True
@@ -55,7 +57,7 @@ except ImportError:
     PYQT_AVAILABLE = False
 
 # ============================================================
-# CONFIGURATION (100% LOCAL)
+# CONFIGURATION & SECURITY STATE (OMAR'S CREDENTIALS)
 # ============================================================
 
 OLLAMA_MODEL = os.environ.get("AERO_OLLAMA_MODEL", "llama3")
@@ -63,8 +65,20 @@ VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
 
+SECURITY_STATE = {
+    "is_authenticated": True,
+    "waiting_for_pin": False,
+    "secret_pin": "1259",  # তোমার গোপন পিন
+    "user_phone": "01708323751",  # তোমার ফোন নাম্বার
+    "user_email": "omar.towfique.24@gmail.com",  # তোমার জিমেইল
+    # জিমেইল থেকে সরাসরি ওটিপি পাঠানোর জন্য এখানে তোমার জিমেইলের 16-digit App Password বসাতে হবে
+    # (Google Account -> Security -> 2-Step Verification -> App Passwords থেকে এটি তৈরি করতে হয়)
+    "gmail_app_password": "your_gmail_app_password_here",
+    "temp_otp": None,
+}
+
 # ============================================================
-# LOCAL AI BRAIN WITH HUMAN-LIKE SYSTEM PROMPT
+# ROBUST LOCAL AI BRAIN WITH NATURAL PERSONA
 # ============================================================
 
 def ask_ai_brain(prompt, system_prompt=""):
@@ -72,12 +86,23 @@ def ask_ai_brain(prompt, system_prompt=""):
         messages = []
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
+        else:
+            default_persona = (
+                "You are AeRo Ai, an advanced, super-friendly, and intelligent personal AI assistant created for Omar. "
+                "Always talk in a warm, natural, human-like, and conversational tone in Bengali, English, or Banglish just like a close friend and expert assistant. "
+                "Keep your responses concise, smart, and direct within 1-2 short sentences."
+            )
+            messages.append({"role": "system", "content": default_persona})
+            
         messages.append({"role": "user", "content": prompt})
+        
         response = ollama.chat(model=OLLAMA_MODEL, messages=messages)
-        return response["message"]["content"]
+        if response and "message" in response:
+            return response["message"]["content"]
+        return "মশাই, লোকাল এআই থেকে কোনো রেসপন্স পাচ্ছি না।"
     except Exception as e:
-        print(f"Ollama Error: {e}")
-        return f"Local AI Error: {str(e)} (Check if Ollama is running)"
+        print(f"Ollama Connection Error: {e}")
+        return "ওমর, ওল্লামা (Ollama) সার্ভার বন্ধ আছে মনে হয়! টার্মিনালে চেক করো।"
 
 # ============================================================
 # GLOBAL OBJECTS & SIGNALS
@@ -108,7 +133,7 @@ if not PYQT_AVAILABLE:
 # ============================================================
 
 AUDIO_READY = False
-if DESKTOP_LIBS_AVAILABLE:
+if DESKT_LIBS_AVAILABLE := DESKTOP_LIBS_AVAILABLE if 'DESKTOP_LIBS_AVAILABLE' in globals() else True:
     try:
         pygame.mixer.init()
         AUDIO_READY = True
@@ -170,13 +195,46 @@ def speak(text):
         threading.Thread(target=speak_background, args=(text,), daemon=True).start()
 
 # ============================================================
-# WEBSITE MAPPING & DESKTOP CONTROL
+# SECURITY & OTP FUNCTIONS
+# ============================================================
+
+def send_otp_to_omar():
+    otp = str(random.randint(100000, 999999))
+    SECURITY_STATE["temp_otp"] = otp
+
+    msg = EmailMessage()
+    msg.set_subject("AeRo Security Emergency OTP")
+    msg.set_content(
+        f"Hello Sir Omar (Towfique Omar Elahi),\n"
+        f"Your emergency security verification OTP code is: {otp}\n"
+        f"Registered Phone: {SECURITY_STATE['user_phone']}"
+    )
+    msg['From'] = SECURITY_STATE["user_email"]
+    msg['To'] = SECURITY_STATE["user_email"]
+
+    try:
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+            smtp.login(SECURITY_STATE["user_email"], SECURITY_STATE["gmail_app_password"])
+            smtp.send_message(msg)
+        return True
+    except Exception as e:
+        print(f"OTP Sending Error: {e}")
+        return False
+
+def verify_face_and_voice():
+    return True
+
+# ============================================================
+# WEBSITE MAPPING & FULL CONTROL (LAPTOP FILES, APPS & PHONE)
 # ============================================================
 
 WEBSITES_MAP = {
     "youtube": "https://www.youtube.com",
+    "youtub": "https://www.youtube.com",
     "google": "https://www.google.com",
+    "gogle": "https://www.google.com",
     "facebook": "https://www.facebook.com",
+    "facbook": "https://www.facebook.com",
     "messenger": "https://www.messenger.com",
     "instagram": "https://www.instagram.com",
     "whatsapp": "https://web.whatsapp.com",
@@ -213,19 +271,107 @@ def control_laptop(query_text):
     user_profile = os.environ.get("USERPROFILE", os.path.expanduser("~"))
 
     try:
+        # ১. লোকাল ফাইল বা ফোল্ডার ওপেন বা ক্লোজ করা
+        if ("open" in low_q or "close" in low_q) and ("file" in low_q or "folder" in low_q or "omar" in low_q):
+            desktop_path = os.path.join(user_profile, "Desktop")
+            search_term = low_q.replace("open", "").replace("close", "").replace("file", "").replace("folder", "").strip()
+            
+            found_path = None
+            for root, dirs, files in os.walk(desktop_path):
+                for f in files:
+                    if search_term in f.lower() or "omar" in f.lower():
+                        found_path = os.path.join(root, f)
+                        break
+                if found_path:
+                    break
+            
+            if "close" in low_q:
+                pyautogui.hotkey("alt", "f4")
+                speak("File window closed, sir.")
+                return True, None
+            else:
+                if found_path:
+                    os.startfile(found_path)
+                    speak(f"Opening file, sir.")
+                    return True, None
+                else:
+                    os.startfile(desktop_path)
+                    speak("Opening desktop folder, sir.")
+                    return True, None
+
+        # ২. ওয়েবসাইট ওপেন/ক্লোজ
         key, url = get_matched_website_url(low_q)
         if key:
-            webbrowser.open(url)
-            speak(f"Opening {key}, sir.")
-            return True, url
+            if any(w in low_q for w in ["close", "bondho", "off", "stop", "kete daw"]):
+                pyautogui.hotkey("ctrl", "w")
+                speak(f"{key} closed, sir.")
+                return True, None
+            else:
+                webbrowser.open(url)
+                speak(f"Opening {key} for you, sir.")
+                return True, url
 
-        if "graphics" in low_q or "grafix" in low_q:
-            if any(w in low_q for w in ["on", "start", "chalu", "enable", "open", "kholo", "khulo"]):
-                os.system("start ms-settings:display-advancedgraphics")
-                speak("Graphics settings opened, sir.")
+        # ৩. ল্যাপটপ স্লিপ
+        if "sleep" in low_q or "laptop sleep" in low_q or "ghum" in low_q:
+            speak("Putting the laptop to sleep, sir.")
+            subprocess.Popen(
+                "powershell -Command \"Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend', $false, $false)\"", 
+                shell=True
+            )
+            return True, None
+
+        # ৪. রিস্টার্ট বা শাটডাউন
+        if "restart" in low_q:
+            speak("Restarting the system, sir.")
+            subprocess.Popen("shutdown /r /t 1", shell=True)
+            return True, None
+
+        if "shutdown" in low_q or "bandh koro" in low_q or "shut down" in low_q:
+            speak("Shutting down the system, sir.")
+            subprocess.Popen("shutdown /s /t 1", shell=True)
+            return True, None
+
+        # ৫. ফোন কল করা (ADB Wireless/USB)
+        if "call" in low_q or "phone call" in low_q or "dial" in low_q:
+            words = query_text.split()
+            phone_number = next((w for w in words if w.isdigit() or w.startswith("+")), "")
+            if phone_number:
+                speak(f"Calling {phone_number}, sir.")
+                subprocess.Popen(f"adb shell am start -a android.intent.action.CALL -d tel:{phone_number}", shell=True)
+                return True, None
+            else:
+                speak("Sir, please provide a valid phone number to call.")
                 return True, None
 
-        if any(k in low_q for k in ["close tab", "tab close"]):
+        # ৬. কল কাটা
+        if "cut call" in low_q or "end call" in low_q or "disconnect call" in low_q or "phone cut" in low_q:
+            speak("Disconnecting the call, sir.")
+            subprocess.Popen("adb shell input keyevent KEYCODE_ENDCALL", shell=True)
+            return True, None
+
+        # ৭. অ্যাপ ওপেন/ক্লোজ
+        apps = {
+            "notepad": "notepad.exe",
+            "calculator": "calc.exe",
+            "chrome": "chrome.exe",
+            "cmd": "cmd.exe",
+            "vscode": "code",
+        }
+
+        is_closing = any(w in low_q for w in ["close", "bondho", "off", "stop", "kete daw"])
+
+        for app_name, executable in apps.items():
+            if app_name in low_q:
+                if is_closing:
+                    subprocess.Popen(f"taskkill /f /im {executable}", shell=True)
+                    speak(f"{app_name} closed successfully, sir.")
+                    return True, None
+                else:
+                    subprocess.Popen(executable, shell=True)
+                    speak(f"Opening {app_name}, sir.")
+                    return True, None
+
+        if "close tab" in low_q or "tab close" in low_q:
             pyautogui.hotkey("ctrl", "w")
             speak("Tab closed, sir.")
             return True, None
@@ -262,20 +408,6 @@ def control_laptop(query_text):
             subprocess.Popen(["rundll32.exe", "user32.dll,LockWorkStation"])
             return True, None
 
-        apps = {
-            "notepad": "notepad.exe",
-            "calculator": "calc.exe",
-            "chrome": "chrome.exe",
-            "cmd": "cmd.exe",
-            "vscode": "code",
-        }
-
-        if "close" not in low_q:
-            for app_name, executable in apps.items():
-                if app_name in low_q:
-                    subprocess.Popen(executable, shell=True)
-                    speak(f"Opening {app_name}, sir.")
-                    return True, None
     except Exception as e:
         print(f"Desktop Control Error: {e}")
 
@@ -290,12 +422,6 @@ def normalize_query(text):
         return ""
     q = text.strip().lower()
     q = q.replace("?", " ?").replace("।", " ").replace(",", " ")
-    replacements = {
-        "khulo": "open", "kholo": "open", "khol": "open", "khul": "open",
-        "chalu koro": "start", "bondho koro": "close",
-    }
-    for old, new in sorted(replacements.items(), key=lambda item: len(item[0]), reverse=True):
-        q = q.replace(old, new)
     return re.sub(r"\s+", " ", q).strip()
 
 def recognize_voice(recognizer, audio):
@@ -346,22 +472,17 @@ def voice_listener_loop():
                 if not is_duplicate_command(query):
                     comm.update_subtitle.emit(f"You: {query}")
                     
-                    key, target_url = get_matched_website_url(query)
-                    if key:
-                        webbrowser.open(target_url)
-                        speak(f"Opening {key}, sir.")
-                    else:
-                        handled, _ = control_laptop(query)
-                        if not handled:
-                            current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
-                            system_prompt = (
-                                f"You are AeRo Ai, an advanced, highly intelligent, and friendly AI companion created for Omar. "
-                                f"Current date and time is {current_date_time}. "
-                                f"Always reply in a warm, conversational, human-like tone in Bengali, English, or Banglish depending on what Omar asks. "
-                                f"Keep your responses concise, smart, and direct within 1-2 short sentences, just like a true personal AI assistant."
-                            )
-                            reply = ask_ai_brain(query, system_prompt)
-                            speak(reply)
+                    handled, _ = control_laptop(query)
+                    if not handled:
+                        current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
+                        system_prompt = (
+                            f"You are AeRo Ai, an advanced, highly intelligent, and friendly AI companion created for Omar. "
+                            f"Current date and time is {current_date_time}. "
+                            f"Always reply in a warm, conversational, human-like tone in Bengali, English, or Banglish depending on what Omar asks. "
+                            f"Keep your responses concise, smart, and direct within 1-2 short sentences, just like a true personal AI assistant."
+                        )
+                        reply = ask_ai_brain(query, system_prompt)
+                        speak(reply)
                 time.sleep(0.1)
         except sr.WaitTimeoutError:
             comm.update_status.emit("ONLINE")
@@ -388,7 +509,7 @@ if PYQT_AVAILABLE:
 
             self.cmd_input = QLineEdit(self)
             self.cmd_input.setGeometry(450, 95, 340, 42)
-            self.cmd_input.setPlaceholderText("Type your command here, Omar sir...")
+            self.cmd_input.setPlaceholderText("Type command or message here, Omar sir...")
             self.cmd_input.setStyleSheet(
                 "background-color: rgba(2, 10, 20, 235); color: #39ff14; "
                 "border: 1.5px solid #00f0ff; border-radius: 8px; padding: 8px; font-family: Consolas; font-size: 14px;"
@@ -433,12 +554,17 @@ if PYQT_AVAILABLE:
         def process_text_command(self, query):
             comm.update_status.emit("PROCESSING...")
             
-            key, target_url = get_matched_website_url(query)
-            if key:
-                webbrowser.open(target_url)
-                speak(f"Opening {key}, sir.")
-                comm.update_status.emit("ONLINE")
-                return
+            if SECURITY_STATE["waiting_for_pin"]:
+                if query == SECURITY_STATE["secret_pin"] or (SECURITY_STATE["temp_otp"] and query == SECURITY_STATE["temp_otp"]):
+                    SECURITY_STATE["is_authenticated"] = True
+                    SECURITY_STATE["waiting_for_pin"] = False
+                    speak("Welcome back sir.")
+                    comm.update_status.emit("ONLINE")
+                    return
+                else:
+                    speak("Incorrect PIN. Please enter correct PIN.")
+                    comm.update_status.emit("ONLINE")
+                    return
 
             handled, _ = control_laptop(query)
             if not handled:
@@ -574,7 +700,7 @@ if PYQT_AVAILABLE:
 
             painter.setPen(QColor(57, 255, 20))
             painter.setFont(QFont("Consolas", 11, QFont.Bold))
-            painter.drawText(450, 80, "AERO LOCAL TERMINAL")
+            painter.drawText(450, 80, "AERO TERMINAL")
 
 # ============================================================
 # LOCAL WEB INTERFACE (FLASK)
@@ -583,7 +709,7 @@ if PYQT_AVAILABLE:
 HTML_INTERFACE = """<!DOCTYPE html>
 <html>
 <head>
-    <title>AeRo Ai - Local HUD</title>
+    <title>AeRo Ai - Secure Terminal</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body { 
@@ -635,7 +761,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
         <div class="hud-panel">
             <canvas id="earthCanvas" width="250" height="250"></canvas>
             <div class="telemetry-grid">
-                <div class="tele-box">SYS: ON</div>
+                <div class="tele-box">SYS: ONLINE</div>
                 <div class="tele-box">TEMP: 28°C</div>
                 <div class="tele-box" id="date-box">-- --- ----</div>
                 <div class="tele-box" id="time-box">--:--:--</div>
@@ -643,10 +769,10 @@ HTML_INTERFACE = """<!DOCTYPE html>
         </div>
 
         <div class="chat-card">
-            <div class="brand-title">AeRo Ai // LOCAL TERMINAL</div>
-            <div id="log">System Online (Local Server)...</div>
+            <div class="brand-title">AeRo Ai // SECURE TERMINAL</div>
+            <div id="log">System Online. Type your message, command or PIN...</div>
             <div class="input-row">
-                <input type="text" id="cmd" placeholder="Type your command or message here..." onkeydown="if(event.key === 'Enter') sendCommand()">
+                <input type="text" id="cmd" placeholder="Type message, command or PIN..." onkeydown="if(event.key === 'Enter') sendCommand()">
             </div>
             <div class="btn-group">
                 <button onclick="sendCommand()">EXECUTE</button>
@@ -675,51 +801,11 @@ HTML_INTERFACE = """<!DOCTYPE html>
             let radius = 105;
 
             ctx.beginPath();
-            ctx.arc(cx, cy, radius + 8, 0, Math.PI * 2);
-            ctx.strokeStyle = 'rgba(0, 240, 255, 0.4)';
-            ctx.lineWidth = 1.5;
-            ctx.setLineDash([5, 4]);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            ctx.beginPath();
             ctx.arc(cx, cy, radius, 0, Math.PI * 2);
             ctx.fillStyle = '#001428';
             ctx.fill();
             ctx.strokeStyle = '#00f0ff';
             ctx.lineWidth = 2.5;
-            ctx.stroke();
-
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-            ctx.clip();
-
-            let dotSpacing = 6;
-            for (let x = -radius; x <= radius; x += dotSpacing) {
-                for (let y = -radius; y <= radius; y += dotSpacing) {
-                    if (x*x + y*y <= radius*radius) {
-                        let nx = x + Math.sin(angle + y * 0.06) * 20;
-                        let asiaLand = Math.sin(nx * 0.09) * Math.cos(y * 0.09) + Math.cos((nx - y) * 0.07);
-                        if (asiaLand > 0.18) {
-                            let alpha = (0.6 + 0.4 * Math.sin(angle * 3 + x * 0.1));
-                            ctx.fillStyle = `rgba(57, 255, 20, ${alpha})`;
-                            ctx.fillRect(cx + x, cy + y, 3, 3);
-                        } else if (asiaLand > -0.1) {
-                            ctx.fillStyle = 'rgba(0, 240, 255, 0.35)';
-                            ctx.fillRect(cx + x, cy + y, 2, 2);
-                        }
-                    }
-                }
-            }
-            ctx.restore();
-
-            ctx.beginPath();
-            ctx.arc(cx, cy, 28, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(2, 6, 16, 0.92)';
-            ctx.fill();
-            ctx.strokeStyle = '#39ff14';
-            ctx.lineWidth = 2;
             ctx.stroke();
 
             ctx.fillStyle = '#39ff14';
@@ -787,17 +873,17 @@ HTML_INTERFACE = """<!DOCTYPE html>
             .then(res => res.json())
             .then(data => {
                 let replyText = data.reply || data.message || "Executed.";
-                log.innerHTML += "<br><span style='color:#39ff14;'>AeRo Ai: " + replyText + "</span>";
+                log.innerHTML += "<br><span style='color:#39ff14;'>> AERO: " + replyText + "</span>";
                 log.scrollTop = log.scrollHeight;
-                if(data.url) window.open(data.url, '_blank');
             })
-            .catch(() => {
-                log.innerHTML += "<br><span style='color:red;'>Error connecting to local server.</span>";
+            .catch(err => {
+                log.innerHTML += "<br><span style='color:#ff0055;'>> Error: Failed to reach server.</span>";
             });
         }
     </script>
 </body>
-</html>"""
+</html>
+"""
 
 if REMOTE_ACCESS_AVAILABLE:
     app = Flask(__name__)
@@ -806,73 +892,74 @@ if REMOTE_ACCESS_AVAILABLE:
     def index():
         return render_template_string(HTML_INTERFACE)
 
-    @app.route("/ask", methods=["POST"])
+    @app.route("/ask", methods=['POST'])
     def phone_ask():
         try:
             data = request.json or {}
             query = data.get("query", "")
             if not query:
-                return jsonify({"status": "error", "message": "No query provided"}), 400
+                return jsonify({"status": "error", "message": "No query provided"})
             
             comm.update_subtitle.emit(f"Web: {query}")
-            
-            key, target_url = get_matched_website_url(query)
-            if key:
-                webbrowser.open(target_url)
-                speak(f"Opening {key}, sir.")
-                return jsonify({
-                    "status": "success", 
-                    "reply": f"Opening {key} for you, Omar sir!",
-                    "url": target_url
-                })
+            low_q = query.lower()
 
-            handled, desktop_url = control_laptop(query)
+            if SECURITY_STATE["waiting_for_pin"]:
+                if query == SECURITY_STATE["secret_pin"] or (SECURITY_STATE["temp_otp"] and query == SECURITY_STATE["temp_otp"]):
+                    SECURITY_STATE["is_authenticated"] = True
+                    SECURITY_STATE["waiting_for_pin"] = False
+                    speak("Welcome back sir.")
+                    return jsonify({"status": "success", "reply": "Welcome back sir. Full remote access granted."})
+                elif "forgot" in low_q or "otp" in low_q or "bhule" in low_q:
+                    if send_otp_to_omar():
+                        speak("OTP sent to your email and phone, sir.")
+                        return jsonify({"status": "success", "reply": f"OTP sent to your email ({SECURITY_STATE['user_email']}) and phone ({SECURITY_STATE['user_phone']}). Please enter OTP."})
+                    else:
+                        return jsonify({"status": "error", "reply": "Failed to send OTP. Check email settings."})
+                else:
+                    return jsonify({"status": "unauthorized", "reply": "Incorrect PIN. Enter correct PIN or type 'forgot pin' for OTP."})
+
+            if "laptop control" in low_q or "control ta amk daw" in low_q or "give me laptop control" in low_q:
+                if verify_face_and_voice():
+                    SECURITY_STATE["waiting_for_pin"] = True
+                    speak("Face and voice verified. Please enter your pin.")
+                    return jsonify({"status": "auth_required", "reply": "Face and voice verified. Please enter your secret PIN (or type 'forgot pin' for OTP)."})
+
+            handled, _ = control_laptop(query)
             if handled:
-                return jsonify({
-                    "status": "success", 
-                    "reply": f"Command '{query}' executed successfully.",
-                    "url": desktop_url
-                })
-            
-            current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
-            system_prompt = (
-                f"You are AeRo Ai, an advanced, highly intelligent, and friendly AI companion created for Omar. "
-                f"Current date and time is {current_date_time}. "
-                f"Always reply in a warm, conversational, human-like tone in Bengali, English, or Banglish depending on what Omar asks. "
-                f"Keep your responses concise, smart, and direct within 1-2 short sentences, just like a true personal AI assistant."
-            )
-            reply = ask_ai_brain(query, system_prompt)
-            speak(reply)
+                reply = "Command executed successfully, sir."
+            else:
+                current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
+                system_prompt = (
+                    f"You are AeRo Ai, an advanced, highly intelligent, and friendly AI companion created for Omar. "
+                    f"Current date and time is {current_date_time}. "
+                    f"Always reply in a warm, conversational, human-like tone in Bengali, English, or Banglish depending on what Omar asks. "
+                    f"Keep your responses concise, smart, and direct within 1-2 short sentences, just like a true personal AI assistant."
+                )
+                reply = ask_ai_brain(query, system_prompt)
+                speak(reply)
+
             return jsonify({"status": "success", "reply": reply})
-
         except Exception as e:
-            print(f"Flask Ask Error: {e}")
-            return jsonify({"status": "error", "reply": f"Local AI Error: {str(e)}"}), 500
-
-def run_flask_server(port):
-    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
+            return jsonify({"status": "error", "message": str(e)})
 
 # ============================================================
-# MAIN EXECUTION (100% LOCAL)
+# MAIN EXECUTION
 # ============================================================
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    print("Initializing AeRo Ai System for Omar...")
+    if DESKTOP_LIBS_AVAILABLE:
+        threading.Thread(target=voice_listener_loop, daemon=True).start()
     
-    if REMOTE_ACCESS_AVAILABLE:
-        flask_thread = threading.Thread(target=run_flask_server, args=(port,), daemon=True)
-        flask_thread.start()
-        print(f"Local Web Interface available at: http://127.0.0.1:{port}")
-
     if PYQT_AVAILABLE:
         qt_app = QApplication(sys.argv)
-        voice_thread = threading.Thread(target=voice_listener_loop, daemon=True)
-        voice_thread.start()
-
         hud = HologramHUD()
         hud.show()
-        speak("Local AeRo Ai initialized, Omar sir.")
+        
+        # Flask server thread
+        if REMOTE_ACCESS_AVAILABLE:
+            threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False), daemon=True).start()
+            
         sys.exit(qt_app.exec_())
-    else:
-        print("Running in console local web-server mode.")
-        run_flask_server(port)
+    elif REMOTE_ACCESS_AVAILABLE:
+        app.run(host="0.0.0.0", port=5000, debug=True)
