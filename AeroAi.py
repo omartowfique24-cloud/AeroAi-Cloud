@@ -97,7 +97,7 @@ def scan_and_neutralize_threats(text_or_query):
             if bad_word in low_url:
                 cleaned_text = text_or_query.replace(url, "[⚠️ AERO ANTIVIRUS: MALICIOUS LINK BLOCKED & NEUTRALIZED]")
                 threading.Thread(target=send_security_breach_alert, args=(f"Malicious Link Blocked: {url}",), daemon=True).start()
-                return False, cleaned_text, "Sir, a dangerous virus link or phishing SMS was detected and blocked by AeRo Antivirus!"
+                return False, cleaned_text, "Sir, a dangerous virus link or phishing SMS was detected and blocked by Jarvis Antivirus!"
 
     if DESKTOP_LIBS_AVAILABLE:
         try:
@@ -117,10 +117,10 @@ def scan_and_neutralize_threats(text_or_query):
 def send_security_breach_alert(threat_info="Unknown Threat"):
     try:
         msg = EmailMessage()
-        msg.set_subject("🛡️ AERO DEFENSE & ANTIVIRUS ALERT!")
+        msg.set_subject("🛡️ JARVIS DEFENSE & ANTIVIRUS ALERT!")
         msg.set_content(
             f"Hello Sir Omar (Towfique Omar Elahi),\n\n"
-            f"AeRo Strategic Defense Shield has intercepted an alert!\n"
+            f"Jarvis Strategic Defense Shield has intercepted an alert!\n"
             f"Details: {threat_info}\n"
             f"Timestamp: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
             f"Registered Phone: {SECURITY_STATE['user_phone']}\n\n"
@@ -155,7 +155,7 @@ def ask_ai_brain(prompt, system_prompt=""):
             messages.append({"role": "system", "content": system_prompt})
         else:
             default_persona = (
-                "You are AeRo Ai, an advanced, highly intelligent, precise, and truth-focused personal AI assistant created for Omar. "
+                "You are Jarvis, an advanced, highly intelligent, precise, and truth-focused personal AI assistant created for Omar. "
                 "Always provide 100% accurate, fact-based, and correct information. "
                 "Talk in a warm, natural, human-like tone in Bengali, English, or Banglish. Keep responses concise within 1-2 short sentences."
             )
@@ -231,8 +231,8 @@ def speak(text):
     if not text:
         return
     text = str(text).strip()
-    print(f"AERO AI: {text}")
-    comm.update_subtitle.emit(f"AERO AI: {text}")
+    print(f"JARVIS AI: {text}")
+    comm.update_subtitle.emit(f"JARVIS AI: {text}")
     if TTS_ENGINE:
         threading.Thread(target=speak_background, args=(text,), daemon=True).start()
 
@@ -245,7 +245,7 @@ def send_otp_to_omar():
     SECURITY_STATE["temp_otp"] = otp
 
     msg = EmailMessage()
-    msg.set_subject("AeRo Security Emergency OTP")
+    msg.set_subject("Jarvis Security Emergency OTP")
     msg.set_content(
         f"Hello Sir Omar (Towfique Omar Elahi),\n"
         f"Your emergency security verification OTP code is: {otp}\n"
@@ -438,7 +438,7 @@ def voice_listener_loop():
                     if not handled:
                         current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
                         system_prompt = (
-                            f"You are AeRo Ai, an advanced, highly intelligent, precise, and friendly AI companion created for Omar. "
+                            f"You are Jarvis, an advanced, highly intelligent, precise, and friendly AI companion created for Omar. "
                             f"Current date and time is {current_date_time}. "
                             f"Always provide 100% accurate, correct, and verified information. "
                             f"Talk in a warm, natural, human-like tone in Bengali, English, or Banglish. Keep responses concise within 1-2 short sentences."
@@ -454,7 +454,7 @@ def voice_listener_loop():
             time.sleep(1)
 
 # ============================================================
-# MEYA STYLE FUTURISTIC HOLOGRAM HUD (PyQt5)
+# MEYA / JARVIS STYLE FUTURISTIC HOLOGRAM HUD (PyQt5)
 # ============================================================
 
 if PYQT_AVAILABLE:
@@ -467,18 +467,18 @@ if PYQT_AVAILABLE:
 
             self.angle = 0.0
             self.status_text = "ONLINE"
-            self.sub_text = "Meya Ai Quantum Core & Bangladesh Defense Active"
+            self.sub_text = "Jarvis Android Core & Bangladesh Defense Active"
 
             self.cmd_input = QLineEdit(self)
             self.cmd_input.setGeometry(460, 100, 360, 42)
-            self.cmd_input.setPlaceholderText("Meya Terminal: Type command or query...")
+            self.cmd_input.setPlaceholderText("Jarvis Terminal: Type command or query...")
             self.cmd_input.setStyleSheet(
                 "background-color: rgba(5, 15, 30, 245); color: #00f0ff; "
                 "border: 1.5px solid #ff007f; border-radius: 12px; padding: 8px; font-family: Consolas; font-size: 14px;"
             )
             self.cmd_input.returnPressed.connect(self.handle_typed_command)
 
-            self.exec_btn = QPushButton("MEYA EXECUTE", self)
+            self.exec_btn = QPushButton("JARVIS EXECUTE", self)
             self.exec_btn.setGeometry(460, 152, 360, 38)
             self.exec_btn.setStyleSheet(
                 "QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff007f, stop:1 #00f0ff); "
@@ -487,7 +487,7 @@ if PYQT_AVAILABLE:
             )
             self.exec_btn.clicked.connect(self.handle_typed_command)
 
-            self.reply_label = QLabel("Meya Core Online. Awaiting Omar's command...", self)
+            self.reply_label = QLabel("Jarvis Core Online. Awaiting Omar's command...", self)
             self.reply_label.setGeometry(460, 204, 360, 220)
             self.reply_label.setWordWrap(True)
             self.reply_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -542,7 +542,7 @@ if PYQT_AVAILABLE:
             if not handled:
                 current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
                 system_prompt = (
-                    f"You are Meya, an advanced, highly intelligent, precise, and friendly AI companion created for Omar. "
+                    f"You are Jarvis, an advanced, highly intelligent, precise, and friendly AI companion created for Omar. "
                     f"Current date and time is {current_date_time}. "
                     f"Always provide 100% accurate, correct, and verified information. "
                     f"Talk in a warm, natural, human-like tone in Bengali, English, or Banglish. Keep responses concise within 1-2 short sentences."
@@ -581,7 +581,7 @@ if PYQT_AVAILABLE:
             cx, cy = 230, 250
             center = QPoint(cx, cy)
 
-            # Meya Style Neon Cyber Rings
+            # Meya / Jarvis Style Neon Cyber Rings
             painter.setPen(QPen(QColor(255, 0, 127, 180), 2, Qt.DashLine))
             painter.setBrush(Qt.NoBrush)
             painter.drawEllipse(center, 200, 200)
@@ -595,7 +595,7 @@ if PYQT_AVAILABLE:
 
             painter.setFont(QFont("Consolas", 9, QFont.Bold))
             painter.setPen(QColor(0, 240, 255))
-            painter.drawText(cx + 165, cy - 80, "MEYA: ACTIVE")
+            painter.drawText(cx + 165, cy - 80, "JARVIS: ACTIVE")
             painter.drawText(cx + 165, cy + 70, "TEMP: 28°C")
 
             painter.setPen(QColor(255, 0, 127))
@@ -603,13 +603,13 @@ if PYQT_AVAILABLE:
             painter.drawText(cx - 240, cy + 70, f"{time_str}")
 
 # ============================================================
-# WEB INTERFACE WITH WHATSAPP-STYLE SEARCH BAR & ALL FEATURES
+# WEB INTERFACE WITH WHATSAPP LOGO SEARCH BAR & ALL FEATURES
 # ============================================================
 
 HTML_INTERFACE = """<!DOCTYPE html>
 <html>
 <head>
-    <title>Meya Ai - Autonomous Terminal with WhatsApp Search & Defense Shield</title>
+    <title>Jarvis Ai - Android Jarvis Terminal with WhatsApp Logo Search</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body { 
@@ -657,12 +657,12 @@ HTML_INTERFACE = """<!DOCTYPE html>
             margin-bottom: 12px; line-height: 1.5; min-height: 150px; border: 1px solid #222d34;
         }
         
-        /* WhatsApp Style Search Bar */
+        /* WhatsApp Search Bar with Official Green Logo */
         .whatsapp-search-container {
             display: flex; align-items: center; background: #202c33; border-radius: 8px; padding: 6px 12px; margin-bottom: 12px;
             border: 1px solid #222d34;
         }
-        .whatsapp-search-container svg { width: 20px; height: 20px; fill: #8696a0; margin-right: 10px; }
+        .whatsapp-search-container svg { width: 22px; height: 22px; fill: #25D366; margin-right: 10px; flex-shrink: 0; }
         .whatsapp-search-input {
             flex: 1; background: transparent; border: none; color: #e9edef; font-size: 15px; outline: none; font-family: inherit;
         }
@@ -688,7 +688,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
         <div class="sidebar">
             <div class="sidebar-title">💬 CHAT HISTORY</div>
             <div class="history-list" id="history-list">
-                <div class="history-item" onclick="loadHistoryItem('Meya Core Online')">Meya Core Online</div>
+                <div class="history-item" onclick="loadHistoryItem('Jarvis Android Core Online')">Jarvis Android Core Online</div>
             </div>
             <button onclick="clearHistory()" style="background:#ea0038; margin-top:10px;">CLEAR HISTORY</button>
         </div>
@@ -696,10 +696,10 @@ HTML_INTERFACE = """<!DOCTYPE html>
         <div class="main-workspace">
             <div class="header-card">
                 <div class="logo-area">
-                    <img src="https://i.ibb.co.com/83p1Xb1/image-2a4080.png" alt="Meya Ai Logo" class="logo-img">
+                    <img src="https://i.ibb.co.com/83p1Xb1/image-2a4080.png" alt="Jarvis Ai Logo" class="logo-img">
                     <div class="logo-text-group">
-                        <h1>Meya Ai</h1>
-                        <p>QUANTUM PERSONAL ASSISTANT</p>
+                        <h1>Jarvis Ai</h1>
+                        <p>ANDROID JARVIS ASSISTANT</p>
                     </div>
                 </div>
                 <div class="telemetry-bar">
@@ -711,11 +711,11 @@ HTML_INTERFACE = """<!DOCTYPE html>
 
             <div class="workspace">
                 <div class="chat-card">
-                    <div id="log">Meya Quantum Core & Defense Shield Online. Use WhatsApp search bar below for commands or queries...</div>
+                    <div id="log">Jarvis Android Core & Defense Shield Online. Use WhatsApp search bar below for commands or queries...</div>
                     
-                    <!-- WhatsApp Style Search Bar -->
+                    <!-- WhatsApp Search Bar with Official Green WhatsApp SVG Logo -->
                     <div class="whatsapp-search-container">
-                        <svg viewBox="0 0 24 24"><path d="M15.09 13.03l-1.07-.54a1 1 0 0 1-.44-1.36l.54-1.07a1 1 0 0 0-.36-1.36l-1.8-1.04a1 1 0 0 0-1.36.36l-.54 1.07a1 1 0 0 1-1.36.44l-1.07-.54a1 1 0 0 0-1.36.36l-1.04 1.8a1 1 0 0 0 .36 1.36l1.07.54a1 1 0 0 1 .44 1.36l-.54 1.07a1 1 0 0 0 .36 1.36l1.8 1.04a1 1 0 0 0 1.36-.36l.54-1.07a1 1 0 0 1 1.36-.44l1.07.54a1 1 0 0 0 1.36-.36l1.04-1.8a1 1 0 0 0-.36-1.36zM12 15a3 3 0 1 1 0-6 3 3 0 0 1 0 6z"></path></svg>
+                        <svg viewBox="0 0 24 24"><path d="M12.04 2c-5.46 0-9.91 4.45-9.91 9.91 0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38c1.45.79 3.08 1.21 4.79 1.21 5.46 0 9.91-4.45 9.91-9.91 0-2.65-1.03-5.14-2.9-7.01C17.18 3.03 14.69 2 12.04 2zM12.04 20.1c-1.42 0-2.81-.38-4.02-1.11l-.29-.17-3.04.8.81-2.96-.19-.31c-.8-1.28-1.23-2.77-1.23-4.31 0-4.43 3.6-8.03 8.03-8.03 2.15 0 4.17.84 5.69 2.36 1.52 1.52 2.35 3.54 2.35 5.69 0 4.43-3.6 8.03-8.03 8.03zm4.4-6.03c-.24-.12-1.42-.7-1.64-.78-.22-.08-.38-.12-.54.12-.16.24-.62.78-.76.94-.14.16-.28.18-.52.06-.24-.12-1.01-.37-1.93-1.19-.71-.63-1.19-1.41-1.33-1.65-.14-.24-.01-.37.1-.49.11-.11.24-.28.36-.42.12-.14.16-.24.24-.4.08-.16.04-.3-.02-.42-.06-.12-.54-1.31-.74-1.8-.2-.48-.4-.41-.54-.42l-.46-.01c-.16 0-.42.06-.64.3-.22.24-.84.82-.84 2s.86 2.3 0.98 2.46c.12.16 1.69 2.58 4.1 3.62.57.25 1.02.4 1.37.51.58.18 1.11.15 1.53.09.47-.07 1.42-.58 1.62-1.14.2-.56.2-1.04.14-1.14-.06-.1-.22-.16-.46-.28z"/></svg>
                         <input type="text" id="cmd" class="whatsapp-search-input" placeholder="Search or type command, missile scan, call..." onkeydown="if(event.key === 'Enter') sendCommand()">
                     </div>
 
@@ -730,7 +730,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
                 </div>
 
                 <div class="control-panel">
-                    <div class="panel-title">MEYA RADAR & TELEMETRY</div>
+                    <div class="panel-title">JARVIS RADAR & TELEMETRY</div>
                     <div class="media-preview" id="media-output">
                         [Preview: Missile launch telemetry, radar vector, live GPS or traffic cams]
                     </div>
@@ -759,7 +759,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
             item.className = "history-item";
             item.innerText = query;
             item.onclick = function() {
-                loadHistoryItem(`>> ${query}\\n> MEYA: ${reply}`);
+                loadHistoryItem(`>> ${query}\\n> JARVIS: ${reply}`);
             };
             list.prepend(item);
         }
@@ -827,7 +827,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
             .then(res => res.json())
             .then(data => {
                 let replyText = data.reply || data.message || "Executed.";
-                log.innerHTML += "<br><span style='color:#00a884;'>> MEYA: " + replyText + "</span>";
+                log.innerHTML += "<br><span style='color:#00a884;'>> JARVIS: " + replyText + "</span>";
                 log.scrollTop = log.scrollHeight;
                 addHistory(text, replyText);
             })
@@ -838,7 +838,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
 
         function scanMissileThreat() {
             let log = document.getElementById("log");
-            log.innerHTML += "<br><span style='color:#ea0038;'>> [MEYA STRATEGIC DEFENSE]: Scanning regional launch pads & air defense perimeters targeting Bangladesh...</span>";
+            log.innerHTML += "<br><span style='color:#ea0038;'>> [JARVIS STRATEGIC DEFENSE]: Scanning regional launch pads & air defense perimeters targeting Bangladesh...</span>";
             
             fetch('/osint', {
                 method: 'POST',
@@ -961,7 +961,7 @@ if REMOTE_ACCESS_AVAILABLE:
             else:
                 current_date_time = datetime.datetime.now().strftime("%Y-%m-%d, %H:%M:%S")
                 system_prompt = (
-                    f"You are Meya, an advanced, highly intelligent, precise, and friendly AI companion created for Omar. "
+                    f"You are Jarvis, an advanced, highly intelligent, precise, and friendly AI companion created for Omar. "
                     f"Current date and time is {current_date_time}. "
                     f"Always provide 100% accurate, correct, and verified information. "
                     f"Talk in a warm, natural, human-like tone in Bengali, English, or Banglish. Keep responses concise within 1-2 short sentences."
@@ -974,18 +974,18 @@ if REMOTE_ACCESS_AVAILABLE:
             return jsonify({"status": "error", "message": str(e)})
 
 # ============================================================
-# MAIN EXECUTION (THREADED FLASK & MEYA HUD)
+# MAIN EXECUTION (THREADED FLASK & JARVIS HUD)
 # ============================================================
 
 if __name__ == "__main__":
-    print("Initializing Meya Ai Quantum Terminal for Omar...")
+    print("Initializing Jarvis Android Core & Defense Terminal for Omar...")
     
     if DESKTOP_LIBS_AVAILABLE:
         threading.Thread(target=voice_listener_loop, daemon=True).start()
     
     if REMOTE_ACCESS_AVAILABLE:
         threading.Thread(target=lambda: app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False), daemon=True).start()
-        print("Meya Web Server running at http://127.0.0.1:5000")
+        print("Jarvis Web Server running at http://127.0.0.1:5000")
 
     if PYQT_AVAILABLE:
         qt_app = QApplication(sys.argv)
