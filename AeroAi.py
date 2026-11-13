@@ -11,7 +11,9 @@ import threading
 import time
 import webbrowser
 from email.message import EmailMessage
+import requests
 import ollama
+import folium
 
 # PDF Library Import
 try:
@@ -63,11 +65,14 @@ DUPLICATE_COMMAND_SECONDS = 1.5
 SECURITY_STATE = {
     "is_authenticated": True,
     "waiting_for_pin": False,
-    "secret_pin": "1259",  # তোমার গোপন পিন
-    "user_phone": "01708323751",  # তোমার ফোন নাম্বার
-    "user_email": "omar.towfique.24@gmail.com",  # তোমার জিমেইল
+    "secret_pin": "1259",
+    "user_phone": "01708323751",
+    "user_email": "omar.towfique.24@gmail.com",
     "gmail_app_password": "your_gmail_app_password_here",
 }
+
+# ইউজারের শেষ জানা গ্রামের নাম মনে রাখার জন্য
+LAST_KNOWN_VILLAGE = {"name": None}
 
 MALICIOUS_DOMAINS = [
     "free-gift", "win-prize", "hack", "phishing", "malware", "virus",
@@ -121,40 +126,38 @@ def generate_study_pdf(topic, content):
         print(f"PDF Generation Error: {e}")
         return False, str(e)
 
-def run_strategic_missile_scan():
-    return (
-        "[BANGLADESH AIRSPACE SHIELD & RADAR TELEMETRY]:\n"
-        "• Radar Status: ACTIVE & SECURE (Sector Alpha - Dhaka, Rangpur & Border Perimeters)\n"
-        "• Ballistic Trajectory Locks: 0 Active Threats\n"
-        "• Regional Air Defense Battery: Standby & Monitoring\n"
-        "• Surveillance Vector: 23.8103° N, 90.4125° E (All Sectors Clean)"
-    )
-
+# ============================================================
+# REALISTIC OSINT NUMBER PREFIX CHECK (NO FAKE GPS)
+# ============================================================
 def run_osint_lookup(target):
-    low_t = target.lower()
-    if any(k in low_t for k in ["missile", "threat", "defense", "radar", "airspace"]):
-        return run_strategic_missile_scan()
+    phone_no = target.strip()
+    clean_num = re.sub(r'[^0-9+]', '', phone_no)
     
-    if any(k in low_t for k in ["ip", "imei", "sim", "phone", "number", "track", "location", "gps"]):
-        return (
-            f"[AeRo 3D LIVE SATELLITE & TELECOM TRACKER]:\n"
-            f"• Target Vector: '{target}'\n"
-            f"• Carrier / IP Gateway: Active Node Identified (Bangladesh Telecom Grid / BTRC Node)\n"
-            f"• Estimated Coordinates: 23.8103° N, 90.4125° E (Dhaka/Rangpur Sector)\n"
-            f"• Signal Status: Locked via Cell Tower Triangulation.\n"
-            f"• Police / Crime Database Check: No active warrants associated with this node."
-        )
+    if clean_num.startswith("+880"):
+        clean_num = "0" + clean_num[4:]
+    elif clean_num.startswith("880"):
+        clean_num = "0" + clean_num[3:]
 
-    if any(k in low_t for k in ["nid", "crime", "police", "case", "criminal", "verify", "check", "porichoy"]):
-        return (
-            f"[AeRo OSINT & CRIME DATABASE SCAN]:\n"
-            f"• Target Query: '{target}'\n"
-            f"• National ID / Database: Queried via secure gateway.\n"
-            f"• Police / Crime Records: NO ACTIVE WARRANTS OR CRIMINAL RECORDS FOUND.\n"
-            f"• Status: Clean Identity Vector Verified."
-        )
-        
-    return f"[OSINT INTEL]: Target '{target}' analyzed. Global satellite tracking active. No anomalous signals detected."
+    operator = "Unknown / International Carrier"
+    country = "Bangladesh" if clean_num.startswith("01") and len(clean_num) == 11 else "Global / Unknown"
+
+    if clean_num.startswith(("017", "013")):
+        operator = "Grameenphone (GP)"
+    elif clean_num.startswith(("018", "016")):
+        operator = "Robi / Airtel Axiata"
+    elif clean_num.startswith(("019", "014")):
+        operator = "Banglalink Digital"
+    elif clean_num.startswith("015"):
+        operator = "Teletalk Bangladesh"
+
+    result_text = (
+        f"[AeRo TELECOM OSINT REPORT]:\n"
+        f"• Target Number: {phone_no}\n"
+        f"• Country: {country}\n"
+        f"• Telecom Operator: {operator}\n"
+        f"• Live GPS Status: OFF / Restricted (Exact village requires active GPS permission on target device)."
+    )
+    return result_text
 
 def get_prayer_times():
     return (
@@ -167,10 +170,6 @@ def ask_ai_brain(prompt, system_prompt=""):
         low_p = prompt.lower()
         if any(k in low_p for k in ["prayer", "namaz", "namazer somoy"]):
             return get_prayer_times()
-        if any(k in low_p for k in ["missile", "radar", "defense", "airspace"]):
-            return run_strategic_missile_scan()
-        if any(k in low_p for k in ["ip", "imei", "sim", "phone", "nid", "crime", "police", "location", "gps", "track"]):
-            return run_osint_lookup(prompt)
 
         # Study PDF Generation Request
         if "pdf" in low_p:
@@ -301,7 +300,6 @@ def control_laptop(query_text):
                 speak("Window closed, sir.")
             return True, None
 
-        # Short aliases & common typos handling
         aliases = {"yt": "youtube", "youtub": "youtube", "fb": "facebook", "insta": "instagram", "wa": "whatsapp"}
         for alias, target in aliases.items():
             if re.search(rf"\b{alias}\b", low_q):
@@ -315,7 +313,6 @@ def control_laptop(query_text):
                 speak(f"Opening {key} for you, sir.")
                 return True, url
 
-        # Fuzzy matching for typos
         words = low_q.replace("open", "").strip().split()
         for w in words:
             match = difflib.get_close_matches(w, WEBSITES_MAP.keys(), n=1, cutoff=0.75)
@@ -416,7 +413,7 @@ def voice_listener_loop():
             time.sleep(1)
 
 # ============================================================
-# EARTH & HOLOGRAM HUD (PyQt5) - FIXED LIVE CLOCK & POSITION
+# EARTH & HOLOGRAM HUD (PyQt5)
 # ============================================================
 if PYQT_AVAILABLE:
     class HologramHUD(QMainWindow):
@@ -429,7 +426,7 @@ if PYQT_AVAILABLE:
 
             self.cmd_input = QLineEdit(self)
             self.cmd_input.setGeometry(520, 90, 420, 48)
-            self.cmd_input.setPlaceholderText("AeRo Terminal: Study PDF, IP, IMEI, or query...")
+            self.cmd_input.setPlaceholderText("AeRo Terminal: Study PDF, or query...")
             self.cmd_input.setStyleSheet(
                 "background-color: rgba(5, 15, 30, 245); color: #00f0ff; "
                 "border: 2px solid #ff007f; border-radius: 12px; padding: 10px; font-family: Consolas; font-size: 15px;"
@@ -445,7 +442,7 @@ if PYQT_AVAILABLE:
             )
             self.exec_btn.clicked.connect(self.handle_typed_command)
 
-            self.reply_label = QLabel("Welcome back, Omar sir. AeRo Airspace Radar Online.", self)
+            self.reply_label = QLabel("Welcome back, Omar sir. AeRo Telemetry Radar Online.", self)
             self.reply_label.setGeometry(520, 210, 420, 300)
             self.reply_label.setWordWrap(True)
             self.reply_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
@@ -459,7 +456,7 @@ if PYQT_AVAILABLE:
             self.timer.start(1000)
             comm.update_subtitle.connect(self.reply_label.setText)
             self.drag_position = QPoint()
-            speak("Welcome back, Omar sir. AeRo airspace radar system is online.")
+            speak("Welcome back, Omar sir. AeRo radar telemetry system is online.")
 
         def handle_typed_command(self):
             text = self.cmd_input.text().strip()
@@ -519,12 +516,12 @@ if PYQT_AVAILABLE:
             painter.drawText(cx - 235, cy + 80, time_str)
 
 # ============================================================
-# WEB INTERFACE
+# WEB INTERFACE (REAL VILLAGE GPS TRACKING + GEOFENCE ALERT)
 # ============================================================
 HTML_INTERFACE = """<!DOCTYPE html>
 <html>
 <head>
-    <title>AeRo Ai - Autonomous Terminal, Study PDF & Live Traffic</title>
+    <title>AeRo Ai - Autonomous Terminal, Study PDF & Live Village GPS</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body { background-color: #0b141a; color: #e9edef; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 8px; display: flex; justify-content: center; align-items: center; min-height: 94vh; }
@@ -546,7 +543,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
         #log { color: #e9edef; font-size: 14px; background: #0b141a; padding: 8px; border-radius: 8px; flex: 1; overflow-y: auto; margin-bottom: 6px; border: 1px solid #222d34; display: flex; flex-direction: column; gap: 5px; }
         .log-msg { padding: 5px 8px; border-radius: 6px; max-width: 90%; word-break: break-word; }
         .user-msg { background: #005c4b; align-self: flex-end; }
-        .ai-msg { background: #202c33; align-self: flex-start; color: #00a884; border: 1px solid #222d34; }
+        .ai-msg { background: #202c33; align-self: flex-start; color: #00a884; border: 1px solid #222d34; white-space: pre-line; }
         .aero-search-container { display: flex; align-items: center; background: #202c33; border-radius: 8px; padding: 5px 8px; margin-bottom: 6px; border: 1px solid #222d34; }
         .aero-search-input { flex: 1; background: transparent; border: none; color: #e9edef; font-size: 15px; outline: none; }
         .btn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
@@ -555,7 +552,9 @@ HTML_INTERFACE = """<!DOCTYPE html>
         #mic-btn { background: #ea0038; }
         .control-panel { background: #111b21; border-radius: 10px; padding: 10px; width: 320px; display: flex; flex-direction: column; gap: 7px; }
         .panel-title { color: #00a884; font-size: 15px; font-weight: bold; border-bottom: 1px solid #222d34; padding-bottom: 6px; }
-        .media-preview { flex: 1; background: #0b141a; border: 1.5px dashed #222d34; border-radius: 8px; display: flex; align-items: center; justify-content: center; text-align: center; color: #8696a0; font-size: 13px; padding: 7px; }
+        .media-preview { flex: 1; background: #0b141a; border: 1.5px dashed #222d34; border-radius: 8px; display: flex; align-items: center; justify-content: center; text-align: center; color: #8696a0; font-size: 13px; padding: 7px; overflow: hidden; }
+        .osint-input-group { display: flex; gap: 5px; margin-bottom: 5px; }
+        .osint-input { flex: 1; background: #0b141a; border: 1px solid #222d34; color: #00a884; padding: 5px; border-radius: 5px; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -585,24 +584,27 @@ HTML_INTERFACE = """<!DOCTYPE html>
             <div class="workspace">
                 <div class="chat-card">
                     <div id="log">
-                        <div class="log-msg ai-msg">Welcome back, Omar sir. Study PDF, Live Traffic & OSINT Tracker Online.</div>
+                        <div class="log-msg ai-msg">Welcome back, Omar sir. Study PDF, Real Village GPS & Telecom OSINT Online.</div>
                     </div>
                     <div class="aero-search-container">
-                        <input type="text" id="cmd" class="aero-search-input" placeholder="Type study topic + pdf, IP, IMEI, or message..." autocomplete="off">
+                        <input type="text" id="cmd" class="aero-search-input" placeholder="Type study topic + pdf, or message..." autocomplete="off">
                     </div>
                     <div class="btn-grid">
                         <button type="button" onclick="sendCommand()">EXECUTE</button>
                         <button type="button" id="mic-btn" onclick="toggleVoice()">🎙️ SPEAK</button>
-                        <button type="button" onclick="scanMissileThreat()" style="background:#ea0038;">🛡️ MISSILE SCAN</button>
                         <button type="button" onclick="fetchTrafficCam()">📷 LIVE TRAFFIC</button>
                         <button type="button" onclick="generateImage()">🖼️ GEN PIC</button>
                         <button type="button" onclick="generateVideo()">🎬 GEN VIDEO</button>
                     </div>
                 </div>
                 <div class="control-panel">
-                    <div class="panel-title">AERO RADAR & TELEMETRY</div>
-                    <div class="media-preview" id="media-output">[Preview: 3D Live Map, Traffic Feed & OSINT Vectors]</div>
-                    <button type="button" onclick="fetchLocation()">📍 3D LIVE GPS MAP</button>
+                    <div class="panel-title">TELECOM OSINT & LIVE VILLAGE GPS</div>
+                    <div class="osint-input-group">
+                        <input type="text" id="targetInput" class="osint-input" placeholder="017xxxxxxxx">
+                        <button type="button" onclick="runOSINTScan()" style="padding: 5px 10px; font-size:11px;">CHECK SIM</button>
+                    </div>
+                    <div class="media-preview" id="media-output">[Click LIVE GPS MAP to track exact Village & Movement]</div>
+                    <button type="button" onclick="fetchLocation()">📍 LIVE GPS & VILLAGE TRACK</button>
                     <button type="button" onclick="clearLogs()" style="background:#ea0038;">RESET TERMINAL</button>
                 </div>
             </div>
@@ -650,36 +652,69 @@ HTML_INTERFACE = """<!DOCTYPE html>
                 loadingMsg.textContent = "> AeRo: " + (data.reply || data.message || "No response.");
             } catch (err) {
                 loadingMsg.style.color = "#ff4d4d";
-                loadingMsg.textContent = "Error: Python server (127.0.0.1:5000) is offline or unreachable!";
+                loadingMsg.textContent = "Error: Python server is offline or unreachable!";
             }
             log.scrollTop = log.scrollHeight;
         }
 
-        function scanMissileThreat() {
+        // Telecom Carrier Check (No Fake GPS)
+        function runOSINTScan() {
+            const target = document.getElementById("targetInput").value.trim();
             const log = document.getElementById("log");
-            fetch('/osint', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({target: "missile"}) })
-            .then(r => r.json()).then(d => {
+            if (!target) return;
+
+            fetch('/osint', { 
+                method: 'POST', 
+                headers: { 'Content-Type': 'application/json' }, 
+                body: JSON.stringify({ target: target }) 
+            })
+            .then(r => r.json())
+            .then(d => {
                 log.innerHTML += `<div class="log-msg ai-msg">> ${d.result}</div>`;
                 log.scrollTop = log.scrollHeight;
             });
         }
+
+        // Real Live GPS & Village Geofence Movement Watcher
+        function fetchLocation() {
+            const log = document.getElementById("log");
+            if (navigator.geolocation) {
+                log.innerHTML += `<div class="log-msg ai-msg">> Requesting real-time satellite GPS lock...</div>`;
+                navigator.geolocation.watchPosition(p => {
+                    let lat = p.coords.latitude;
+                    let lon = p.coords.longitude;
+                    
+                    document.getElementById("media-output").innerHTML = `<iframe width="100%" height="100%" frameborder="0" src="https://maps.google.com/maps?q=${lat},${lon}&z=17&t=k&output=embed" style="border-radius:6px;"></iframe>`;
+                    
+                    fetch('/track_live_village', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ lat: lat, lon: lon })
+                    })
+                    .then(r => r.json())
+                    .then(d => {
+                        if (d.status === "success") {
+                            log.innerHTML += `<div class="log-msg ai-msg">> ${d.report}</div>`;
+                            log.scrollTop = log.scrollHeight;
+                        }
+                    });
+                }, err => {
+                    log.innerHTML += `<div class="log-msg ai-msg" style="color:#ff4d4d;">> [GPS OFF]: Device location is turned off. Exact village cannot be tracked without GPS permission.</div>`;
+                    log.scrollTop = log.scrollHeight;
+                }, { enableHighAccuracy: true, maximumAge: 5000 });
+            } else {
+                alert("Geolocation not supported by this browser.");
+            }
+        }
+
         function fetchTrafficCam() {
-            document.getElementById("media-output").innerHTML = `<iframe width="100%" height="130px" src="https://www.youtube.com/embed/live_stream?channel=UCupvZG-5ko_eiXAupbDfxWw" frameborder="0" allowfullscreen style="border-radius:6px;"></iframe>`;
+            document.getElementById("media-output").innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/live_stream?channel=UCupvZG-5ko_eiXAupbDfxWw" frameborder="0" allowfullscreen style="border-radius:6px;"></iframe>`;
         }
         function generateImage() {
-            document.getElementById("media-output").innerHTML = `<img src="https://picsum.photos/300/140" style="width:100%; border-radius:6px;">`;
+            document.getElementById("media-output").innerHTML = `<img src="https://picsum.photos/300/140" style="width:100%; height:100%; object-fit:cover; border-radius:6px;">`;
         }
         function generateVideo() {
             document.getElementById("media-output").innerHTML = `<div style="color:#00a884;">🎬 Video Rendered Successfully!</div>`;
-        }
-        function fetchLocation() {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(p => {
-                    let lat = p.coords.latitude;
-                    let lon = p.coords.longitude;
-                    document.getElementById("media-output").innerHTML = `<iframe width="100%" height="130px" frameborder="0" src="https://maps.google.com/maps?q=${lat},${lon}&z=17&t=k&output=embed" style="border-radius:6px;"></iframe>`;
-                });
-            }
         }
         function clearLogs() { document.getElementById("log").innerHTML = `<div class="log-msg ai-msg">Terminal cleared.</div>`; }
         function clearHistory() { document.getElementById("history-list").innerHTML = `<div class="history-item">History Cleared</div>`; }
@@ -706,7 +741,51 @@ if REMOTE_ACCESS_AVAILABLE:
     @app.route("/osint", methods=['POST'])
     def handle_osint():
         data = request.get_json(silent=True) or {}
-        return jsonify({"status": "success", "result": run_osint_lookup(data.get("target", "Unknown"))})
+        target = data.get("target", "Unknown")
+        result_text = run_osint_lookup(target)
+        return jsonify({"status": "success", "result": result_text})
+
+    # Real Reverse Geocoding & Village Geofence Movement Alert
+    @app.route("/track_live_village", methods=['POST'])
+    def track_live_village():
+        data = request.get_json(silent=True) or {}
+        lat = data.get('lat')
+        lon = data.get('lon')
+        
+        try:
+            url = f"https://nominatim.openstreetmap.org/reverse?format=json&lat={lat}&lon={lon}&zoom=18&addressdetails=1"
+            headers = {'User-Agent': 'AeRoAI-Telemetry/1.0'}
+            res = requests.get(url, headers=headers, timeout=5).json()
+            
+            address = res.get('address', {})
+            village = address.get('village') or address.get('suburb') or address.get('neighbourhood') or address.get('hamlet') or "Unknown Village/Area"
+            upazila = address.get('county') or address.get('town') or address.get('city_district') or "Unknown Upazila"
+            district = address.get('state_district') or address.get('city') or "Unknown District"
+            country = address.get('country', 'Bangladesh')
+
+            alert_msg = ""
+            if LAST_KNOWN_VILLAGE["name"] is None:
+                LAST_KNOWN_VILLAGE["name"] = village
+                alert_msg = f"Initial Lock: Currently located in {village}, {upazila}."
+            elif LAST_KNOWN_VILLAGE["name"] != village:
+                old_village = LAST_KNOWN_VILLAGE["name"]
+                LAST_KNOWN_VILLAGE["name"] = village
+                alert_msg = f"⚠️ MOVEMENT ALERT: Left [{old_village}] and entered [{village}]!"
+            else:
+                alert_msg = f"Stationary: Still inside {village}."
+
+            full_report = (
+                f"[AeRo LIVE GPS & VILLAGE TELEMETRY]:\n"
+                f"• Status: {alert_msg}\n"
+                f"• Village / Area: {village}\n"
+                f"• Upazila / Thana: {upazila}\n"
+                f"• District: {district}, {country}\n"
+                f"• Coordinates: {lat}, {lon}"
+            )
+            return jsonify({"status": "success", "report": full_report, "lat": lat, "lon": lon, "village": village})
+
+        except Exception as e:
+            return jsonify({"status": "error", "report": f"GPS Reverse Lookup Error: {str(e)}"})
 
     @app.route("/ask", methods=['POST', 'OPTIONS'])
     def phone_ask():
@@ -738,14 +817,14 @@ if REMOTE_ACCESS_AVAILABLE:
 # MAIN EXECUTION
 # ============================================================
 if __name__ == "__main__":
-    print("Initializing AeRo Ai Quantum & Airspace Defense Terminal for Omar...")
+    print("Initializing AeRo Ai Quantum & Telemetry Terminal for Omar...")
 
     if DESKTOP_LIBS_AVAILABLE:
         threading.Thread(target=voice_listener_loop, daemon=True).start()
 
     if REMOTE_ACCESS_AVAILABLE:
-        threading.Thread(target=lambda: app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False, threaded=True), daemon=True).start()
-        print("AeRo Web Server running at http://127.0.0.1:5000")
+        threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False, threaded=True), daemon=True).start()
+        print("AeRo Web Server running at http://0.0.0.0:5000")
 
     if PYQT_AVAILABLE:
         qt_app = QApplication(sys.argv)
