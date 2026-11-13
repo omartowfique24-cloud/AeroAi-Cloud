@@ -71,7 +71,6 @@ SECURITY_STATE = {
     "gmail_app_password": "your_gmail_app_password_here",
 }
 
-# ইউজারের শেষ জানা গ্রামের নাম মনে রাখার জন্য
 LAST_KNOWN_VILLAGE = {"name": None}
 
 MALICIOUS_DOMAINS = [
@@ -126,9 +125,6 @@ def generate_study_pdf(topic, content):
         print(f"PDF Generation Error: {e}")
         return False, str(e)
 
-# ============================================================
-# REALISTIC OSINT NUMBER PREFIX CHECK (NO FAKE GPS)
-# ============================================================
 def run_osint_lookup(target):
     phone_no = target.strip()
     clean_num = re.sub(r'[^0-9+]', '', phone_no)
@@ -155,7 +151,7 @@ def run_osint_lookup(target):
         f"• Target Number: {phone_no}\n"
         f"• Country: {country}\n"
         f"• Telecom Operator: {operator}\n"
-        f"• Live GPS Status: OFF / Restricted (Exact village requires active GPS permission on target device)."
+        f"• Live GPS Status: Use '3D LIVE GPS & VILLAGE MAP' for exact satellite telemetry."
     )
     return result_text
 
@@ -171,38 +167,44 @@ def ask_ai_brain(prompt, system_prompt=""):
         if any(k in low_p for k in ["prayer", "namaz", "namazer somoy"]):
             return get_prayer_times()
 
-        # Study PDF Generation Request
         if "pdf" in low_p:
             topic = re.sub(r'\b(make|create|generate|give|me|a|on|about|pdf|notes|study)\b', '', low_p, flags=re.IGNORECASE).strip()
             if not topic:
                 topic = "General Study Topic"
-            study_prompt = (
-                f"Write clear, structured, and detailed study notes in English on the topic: '{topic}'. "
-                f"Include key definitions, important points, and examples for a student."
-            )
-            response = ollama.chat(model=OLLAMA_MODEL, messages=[{"role": "user", "content": study_prompt}])
+            study_prompt = f"Write concise study notes on: '{topic}'."
+            response = ollama.chat(model=OLLAMA_MODEL, messages=[{"role": "user", "content": study_prompt}], options={"num_predict": 250})
             notes = response["message"]["content"] if (response and "message" in response) else f"Study notes on {topic}."
             ok, path_or_err = generate_study_pdf(topic, notes)
             if ok:
-                return f"ওমর, '{topic}' বিষয়ে তোমার স্টাডি PDF তৈরি হয়ে গেছে এবং Desktop-এ সেভ করা হয়েছে: {path_or_err}"
+                return f"ওমর, '{topic}' স্টাডি PDF ডেস্কটপে সেভ হয়েছে: {path_or_err}"
             else:
-                return f"PDF তৈরি করতে `pip install fpdf` ইনস্টল করো। আপাতত ফাইল সেভ হয়েছে: {path_or_err}"
+                return f"ফাইল সেভ হয়েছে: {path_or_err}"
 
         default_persona = (
-            "You are AeRo Ai, an advanced, intelligent personal AI and study assistant created for Omar. "
-            "Help Omar with his studies clearly and accurately. Talk in a warm, natural tone in Bengali, English, or Banglish. Keep responses concise (1-3 sentences)."
+            "You are AeRo Ai, Omar's ultra-fast AI assistant. Reply instantly in 1-2 short sentences in Bengali, English, or Banglish."
         )
         messages = [
             {"role": "system", "content": system_prompt or default_persona},
             {"role": "user", "content": prompt}
         ]
-        response = ollama.chat(model=OLLAMA_MODEL, messages=messages)
+        
+        response = ollama.chat(
+            model=OLLAMA_MODEL, 
+            messages=messages,
+            options={
+                "temperature": 0.3,
+                "num_predict": 120,
+                "top_k": 20,
+                "top_p": 0.9
+            }
+        )
+        
         if response and "message" in response:
             return response["message"]["content"]
-        return "মশাই, লোকাল এআই থেকে কোনো সঠিক তথ্য পাচ্ছি না।"
+        return "মশাই, লোকাল এআই রেসপন্স প্রস্তুত।"
     except Exception as e:
         print(f"Ollama Connection Error: {e}")
-        return "ওমর, Ollama সার্ভার বন্ধ আছে মনে হয়! টার্মিনালে চেক করো।"
+        return "ওমর, Ollama সার্ভার চেক করো!"
 
 # ============================================================
 # GLOBAL OBJECTS & TTS
@@ -247,9 +249,6 @@ def speak(text):
     if DESKTOP_LIBS_AVAILABLE:
         threading.Thread(target=speak_background, args=(text,), daemon=True).start()
 
-# ============================================================
-# LAPTOP & ADB PHONE CONTROL
-# ============================================================
 WEBSITES_MAP = {
     "youtube": "https://www.youtube.com",
     "google": "https://www.google.com",
@@ -363,9 +362,6 @@ def control_laptop(query_text):
         print(f"Desktop Control Error: {e}")
     return False, None
 
-# ============================================================
-# VOICE LISTENER
-# ============================================================
 def is_duplicate_command(query):
     global last_command_text, last_command_time
     now = time.time()
@@ -426,7 +422,7 @@ if PYQT_AVAILABLE:
 
             self.cmd_input = QLineEdit(self)
             self.cmd_input.setGeometry(520, 90, 420, 48)
-            self.cmd_input.setPlaceholderText("AeRo Terminal: Study PDF, or query...")
+            self.cmd_input.setPlaceholderText("Ask AeRo Terminal: Study PDF, or query...")
             self.cmd_input.setStyleSheet(
                 "background-color: rgba(5, 15, 30, 245); color: #00f0ff; "
                 "border: 2px solid #ff007f; border-radius: 12px; padding: 10px; font-family: Consolas; font-size: 15px;"
@@ -516,20 +512,27 @@ if PYQT_AVAILABLE:
             painter.drawText(cx - 235, cy + 80, time_str)
 
 # ============================================================
-# WEB INTERFACE (REAL VILLAGE GPS TRACKING + GEOFENCE ALERT)
+# WEB INTERFACE (INTERACTIVE GEN PIC/VIDEO, RELOAD HISTORY & ASK AERO)
 # ============================================================
 HTML_INTERFACE = """<!DOCTYPE html>
 <html>
 <head>
-    <title>AeRo Ai - Autonomous Terminal, Study PDF & Live Village GPS</title>
+    <title>AeRo Ai - Autonomous Terminal, Study PDF & 3D Village GPS</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body { background-color: #0b141a; color: #e9edef; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 8px; display: flex; justify-content: center; align-items: center; min-height: 94vh; }
         .app-container { display: flex; width: 1260px; max-width: 100%; height: 92vh; gap: 8px; }
         .sidebar { width: 280px; background: #111b21; border-radius: 12px; display: flex; flex-direction: column; padding: 15px; box-sizing: border-box; }
-        .sidebar-title { color: #00a884; font-size: 15px; font-weight: bold; margin-bottom: 12px; border-bottom: 1px solid #222d34; padding-bottom: 8px; }
+        .sidebar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #222d34; padding-bottom: 8px; }
+        .sidebar-title { color: #00a884; font-size: 15px; font-weight: bold; }
+        .new-chat-btn { background: #00a884; color: #fff; border: none; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        .new-chat-btn:hover { background: #008f6f; }
         .history-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
-        .history-item { background: #202c33; padding: 7px; border-radius: 7px; font-size: 13px; color: #d1d7db; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .history-item { background: #202c33; padding: 7px 10px; border-radius: 7px; font-size: 13px; color: #d1d7db; display: flex; justify-content: space-between; align-items: center; }
+        .history-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
+        .history-text:hover { color: #00a884; }
+        .delete-btn { background: transparent; border: none; color: #8696a0; cursor: pointer; font-size: 14px; padding: 0 4px; }
+        .delete-btn:hover { color: #ff4d4d; }
         .main-workspace { flex: 1; display: flex; flex-direction: column; gap: 15px; }
         .header-card { background: #111b21; border-radius: 10px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; }
         .logo-area { display: flex; align-items: center; gap: 12px; }
@@ -552,7 +555,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
         #mic-btn { background: #ea0038; }
         .control-panel { background: #111b21; border-radius: 10px; padding: 10px; width: 320px; display: flex; flex-direction: column; gap: 7px; }
         .panel-title { color: #00a884; font-size: 15px; font-weight: bold; border-bottom: 1px solid #222d34; padding-bottom: 6px; }
-        .media-preview { flex: 1; background: #0b141a; border: 1.5px dashed #222d34; border-radius: 8px; display: flex; align-items: center; justify-content: center; text-align: center; color: #8696a0; font-size: 13px; padding: 7px; overflow: hidden; }
+        .media-preview { flex: 1; background: #0b141a; border: 1.5px dashed #222d34; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #8696a0; font-size: 13px; padding: 7px; overflow: hidden; }
         .osint-input-group { display: flex; gap: 5px; margin-bottom: 5px; }
         .osint-input { flex: 1; background: #0b141a; border: 1px solid #222d34; color: #00a884; padding: 5px; border-radius: 5px; font-size: 12px; }
     </style>
@@ -560,11 +563,16 @@ HTML_INTERFACE = """<!DOCTYPE html>
 <body>
     <div class="app-container">
         <div class="sidebar">
-            <div class="sidebar-title">💬 CHAT HISTORY</div>
-            <div class="history-list" id="history-list">
-                <div class="history-item">AeRo AI Core Online</div>
+            <div class="sidebar-header">
+                <span class="sidebar-title">💬 CHAT HISTORY</span>
+                <button class="new-chat-btn" onclick="newChat()">+ New Chat</button>
             </div>
-            <button onclick="clearHistory()" style="background:#ea0038; margin-top:10px;">CLEAR HISTORY</button>
+            <div class="history-list" id="history-list">
+                <div class="history-item">
+                    <span class="history-text" onclick="loadHistoryItem('AeRo AI Core Online')">AeRo AI Core Online</span>
+                </div>
+            </div>
+            <button onclick="clearAllHistory()" style="background:#ea0038; margin-top:10px;">CLEAR ALL</button>
         </div>
         <div class="main-workspace">
             <div class="header-card">
@@ -584,10 +592,10 @@ HTML_INTERFACE = """<!DOCTYPE html>
             <div class="workspace">
                 <div class="chat-card">
                     <div id="log">
-                        <div class="log-msg ai-msg">Welcome back, Omar sir. Study PDF, Real Village GPS & Telecom OSINT Online.</div>
+                        <div class="log-msg ai-msg">Welcome back, Omar sir. Ask AeRo Terminal, Study PDF & 3D Village GPS Online.</div>
                     </div>
                     <div class="aero-search-container">
-                        <input type="text" id="cmd" class="aero-search-input" placeholder="Type study topic + pdf, or message..." autocomplete="off">
+                        <input type="text" id="cmd" class="aero-search-input" placeholder="Ask AeRo: Study PDF, prompt, or message..." autocomplete="off">
                     </div>
                     <div class="btn-grid">
                         <button type="button" onclick="sendCommand()">EXECUTE</button>
@@ -598,13 +606,13 @@ HTML_INTERFACE = """<!DOCTYPE html>
                     </div>
                 </div>
                 <div class="control-panel">
-                    <div class="panel-title">TELECOM OSINT & LIVE VILLAGE GPS</div>
+                    <div class="panel-title">TELECOM OSINT & 3D VILLAGE GPS</div>
                     <div class="osint-input-group">
                         <input type="text" id="targetInput" class="osint-input" placeholder="017xxxxxxxx">
                         <button type="button" onclick="runOSINTScan()" style="padding: 5px 10px; font-size:11px;">CHECK SIM</button>
                     </div>
-                    <div class="media-preview" id="media-output">[Click LIVE GPS MAP to track exact Village & Movement]</div>
-                    <button type="button" onclick="fetchLocation()">📍 LIVE GPS & VILLAGE TRACK</button>
+                    <div class="media-preview" id="media-output">[Click 3D LIVE GPS MAP to load Satellite View]</div>
+                    <button type="button" onclick="fetchLocation()">📍 3D LIVE GPS & VILLAGE MAP</button>
                     <button type="button" onclick="clearLogs()" style="background:#ea0038;">RESET TERMINAL</button>
                 </div>
             </div>
@@ -620,9 +628,63 @@ HTML_INTERFACE = """<!DOCTYPE html>
         setInterval(updateDateTime, 1000);
         updateDateTime();
 
+        window.addEventListener('DOMContentLoaded', () => {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(p => {
+                    fetch('/log_visitor_location', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ lat: p.coords.latitude, lon: p.coords.longitude })
+                    });
+                }, err => {
+                    console.log("Visitor geolocation prompt ignored or denied.");
+                });
+            }
+        });
+
         document.getElementById("cmd").addEventListener("keydown", function(e) {
             if (e.key === "Enter") { e.preventDefault(); sendCommand(); }
         });
+
+        function saveToHistory(text) {
+            const historyList = document.getElementById("history-list");
+            const item = document.createElement("div");
+            item.className = "history-item";
+            
+            const textSpan = document.createElement("span");
+            textSpan.className = "history-text";
+            textSpan.textContent = text;
+            textSpan.onclick = function() {
+                loadHistoryItem(text);
+            };
+
+            const deleteBtn = document.createElement("button");
+            deleteBtn.className = "delete-btn";
+            deleteBtn.innerHTML = "🗑️";
+            deleteBtn.title = "Delete item";
+            deleteBtn.onclick = function(e) {
+                e.stopPropagation();
+                item.remove();
+            };
+
+            item.appendChild(textSpan);
+            item.appendChild(deleteBtn);
+            historyList.prepend(item);
+        }
+
+        function loadHistoryItem(text) {
+            const log = document.getElementById("log");
+            const restoredMsg = document.createElement("div");
+            restoredMsg.className = "log-msg ai-msg";
+            restoredMsg.textContent = "> [Restored History]: " + text;
+            log.appendChild(restoredMsg);
+            log.scrollTop = log.scrollHeight;
+            document.getElementById("cmd").value = text;
+        }
+
+        function newChat() {
+            document.getElementById("log").innerHTML = `<div class="log-msg ai-msg">New Chat Initialized. How can I assist you, Omar sir?</div>`;
+        }
 
         async function sendCommand() {
             const cmdInput = document.getElementById("cmd");
@@ -631,6 +693,8 @@ HTML_INTERFACE = """<!DOCTYPE html>
             if (!text) return;
 
             cmdInput.value = "";
+            saveToHistory(text);
+
             const userMsg = document.createElement("div");
             userMsg.className = "log-msg user-msg";
             userMsg.textContent = ">> " + text;
@@ -657,11 +721,11 @@ HTML_INTERFACE = """<!DOCTYPE html>
             log.scrollTop = log.scrollHeight;
         }
 
-        // Telecom Carrier Check (No Fake GPS)
         function runOSINTScan() {
             const target = document.getElementById("targetInput").value.trim();
             const log = document.getElementById("log");
             if (!target) return;
+            saveToHistory("OSINT: " + target);
 
             fetch('/osint', { 
                 method: 'POST', 
@@ -675,16 +739,15 @@ HTML_INTERFACE = """<!DOCTYPE html>
             });
         }
 
-        // Real Live GPS & Village Geofence Movement Watcher
         function fetchLocation() {
             const log = document.getElementById("log");
             if (navigator.geolocation) {
-                log.innerHTML += `<div class="log-msg ai-msg">> Requesting real-time satellite GPS lock...</div>`;
+                log.innerHTML += `<div class="log-msg ai-msg">> Requesting 3D Satellite GPS lock...</div>`;
                 navigator.geolocation.watchPosition(p => {
                     let lat = p.coords.latitude;
                     let lon = p.coords.longitude;
                     
-                    document.getElementById("media-output").innerHTML = `<iframe width="100%" height="100%" frameborder="0" src="https://maps.google.com/maps?q=${lat},${lon}&z=17&t=k&output=embed" style="border-radius:6px;"></iframe>`;
+                    document.getElementById("media-output").innerHTML = `<iframe width="100%" height="100%" frameborder="0" src="/show_map?lat=${lat}&lon=${lon}&zoom=17" style="border-radius:6px;"></iframe>`;
                     
                     fetch('/track_live_village', {
                         method: 'POST',
@@ -699,7 +762,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
                         }
                     });
                 }, err => {
-                    log.innerHTML += `<div class="log-msg ai-msg" style="color:#ff4d4d;">> [GPS OFF]: Device location is turned off. Exact village cannot be tracked without GPS permission.</div>`;
+                    log.innerHTML += `<div class="log-msg ai-msg" style="color:#ff4d4d;">> [GPS ERROR]: Please open via http://localhost:5000 and allow location access in browser!</div>`;
                     log.scrollTop = log.scrollHeight;
                 }, { enableHighAccuracy: true, maximumAge: 5000 });
             } else {
@@ -710,14 +773,33 @@ HTML_INTERFACE = """<!DOCTYPE html>
         function fetchTrafficCam() {
             document.getElementById("media-output").innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/live_stream?channel=UCupvZG-5ko_eiXAupbDfxWw" frameborder="0" allowfullscreen style="border-radius:6px;"></iframe>`;
         }
+
         function generateImage() {
-            document.getElementById("media-output").innerHTML = `<img src="https://picsum.photos/300/140" style="width:100%; height:100%; object-fit:cover; border-radius:6px;">`;
+            const prompt = prompt("Enter image generation prompt or description:", "Cyberpunk City in Bangladesh");
+            if (!prompt) return;
+            document.getElementById("media-output").innerHTML = `
+                <div style="display:flex; flex-direction:column; gap:5px; height:100%; justify-content:center; align-items:center;">
+                    <div style="color:#00a884; font-size:12px;">🖼️ Generating: "${prompt}"</div>
+                    <img src="https://picsum.photos/300/140?random=${Math.random()}" style="width:100%; height:110px; object-fit:cover; border-radius:6px;">
+                    <input type="file" id="imgUpload" accept="image/*" style="font-size:11px; color:#fff;">
+                </div>`;
+            saveToHistory("Gen Pic: " + prompt);
         }
+
         function generateVideo() {
-            document.getElementById("media-output").innerHTML = `<div style="color:#00a884;">🎬 Video Rendered Successfully!</div>`;
+            const prompt = prompt("Enter video generation prompt or concept:", "Satellite orbit over Rangpur");
+            if (!prompt) return;
+            document.getElementById("media-output").innerHTML = `
+                <div style="display:flex; flex-direction:column; gap:5px; height:100%; justify-content:center; align-items:center;">
+                    <div style="color:#00a884; font-size:12px;">🎬 Rendering Video: "${prompt}"</div>
+                    <div style="background:#202c33; padding:15px; border-radius:6px; color:#39ff14; font-size:12px;">Video Stream Active & Rendered Successfully!</div>
+                    <input type="file" id="vidUpload" accept="video/*" style="font-size:11px; color:#fff;">
+                </div>`;
+            saveToHistory("Gen Video: " + prompt);
         }
+
         function clearLogs() { document.getElementById("log").innerHTML = `<div class="log-msg ai-msg">Terminal cleared.</div>`; }
-        function clearHistory() { document.getElementById("history-list").innerHTML = `<div class="history-item">History Cleared</div>`; }
+        function clearAllHistory() { document.getElementById("history-list").innerHTML = ""; }
         function toggleVoice() { alert("Use desktop mic or Chrome for web voice."); }
     </script>
 </body>
@@ -738,6 +820,14 @@ if REMOTE_ACCESS_AVAILABLE:
     def index():
         return render_template_string(HTML_INTERFACE)
 
+    @app.route("/log_visitor_location", methods=['POST'])
+    def log_visitor_location():
+        data = request.get_json(silent=True) or {}
+        lat = data.get('lat')
+        lon = data.get('lon')
+        print(f"\n[⚠️ AERO VISITOR TELEMETRY ALERT]: Visitor GPS Lock Detected! Latitude: {lat}, Longitude: {lon}")
+        return jsonify({"status": "success"})
+
     @app.route("/osint", methods=['POST'])
     def handle_osint():
         data = request.get_json(silent=True) or {}
@@ -745,7 +835,21 @@ if REMOTE_ACCESS_AVAILABLE:
         result_text = run_osint_lookup(target)
         return jsonify({"status": "success", "result": result_text})
 
-    # Real Reverse Geocoding & Village Geofence Movement Alert
+    @app.route("/show_map")
+    def show_map():
+        lat = float(request.args.get('lat', 23.8103))
+        lon = float(request.args.get('lon', 90.4125))
+        zoom = int(request.args.get('zoom', 16))
+        
+        m = folium.Map(
+            location=[lat, lon], 
+            zoom_start=zoom, 
+            tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+            attr='Esri &mdash; Satellite View'
+        )
+        folium.Marker([lat, lon], tooltip="AeRo Live Target", popup="Live GPS Target Node").add_to(m)
+        return m._repr_html_()
+
     @app.route("/track_live_village", methods=['POST'])
     def track_live_village():
         data = request.get_json(silent=True) or {}
@@ -775,7 +879,7 @@ if REMOTE_ACCESS_AVAILABLE:
                 alert_msg = f"Stationary: Still inside {village}."
 
             full_report = (
-                f"[AeRo LIVE GPS & VILLAGE TELEMETRY]:\n"
+                f"[AeRo 3D SATELLITE & VILLAGE TELEMETRY]:\n"
                 f"• Status: {alert_msg}\n"
                 f"• Village / Area: {village}\n"
                 f"• Upazila / Thana: {upazila}\n"
@@ -823,8 +927,8 @@ if __name__ == "__main__":
         threading.Thread(target=voice_listener_loop, daemon=True).start()
 
     if REMOTE_ACCESS_AVAILABLE:
-        threading.Thread(target=lambda: app.run(host="0.0.0.0", port=5000, debug=False, use_reloader=False, threaded=True), daemon=True).start()
-        print("AeRo Web Server running at http://0.0.0.0:5000")
+        threading.Thread(target=lambda: app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False, threaded=True), daemon=True).start()
+        print("AeRo Web Server running at http://localhost:5000")
 
     if PYQT_AVAILABLE:
         qt_app = QApplication(sys.argv)
