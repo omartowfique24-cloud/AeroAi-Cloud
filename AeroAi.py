@@ -605,6 +605,16 @@ HTML_INTERFACE = """<!DOCTYPE html>
         .media-preview { flex: 1; background: #0b141a; border: 1.5px dashed #263742; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #8696a0; font-size: 12px; padding: 8px; overflow: hidden; min-height: 200px; }
         .devices-box { background: #0b141a; border: 1px solid #222d34; border-radius: 10px; padding: 8px; font-size: 12px; max-height: 110px; overflow-y: auto; color: #d1d7db; }
         .device-row { padding: 4px 0; border-bottom: 1px dashed #222d34; }
+
+        @media (max-width: 768px) {
+            body { padding: 6px; align-items: flex-start; }
+            .app-container { flex-direction: column; height: auto; width: 100%; }
+            .sidebar, .control-panel, .main-workspace, .chat-card { width: 100%; }
+            .header-card { flex-direction: column; align-items: flex-start; gap: 8px; }
+            .telemetry-bar { flex-wrap: wrap; }
+            .workspace { flex-direction: column; }
+            #log { min-height: 260px; max-height: 360px; }
+        }
     </style>
 </head>
 <body>
@@ -847,11 +857,18 @@ HTML_INTERFACE = """<!DOCTYPE html>
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ query: text })
                 });
-                const data = await res.json();
+                const rawText = await res.text();
+                let data = {};
+                try {
+                    data = JSON.parse(rawText);
+                } catch (_) {
+                    loadingMsg.textContent = `Server HTTP ${res.status}: ` + rawText.slice(0, 140);
+                    return;
+                }
                 loadingMsg.textContent = "> AeRo: " + (data.reply || data.message || "No response.");
             } catch (err) {
                 loadingMsg.style.color = "#ff4d4d";
-                loadingMsg.textContent = "Error: Python server is offline or unreachable!";
+                loadingMsg.textContent = "Network Error: " + err;
             }
             log.scrollTop = log.scrollHeight;
         }
