@@ -180,49 +180,87 @@ def _ask_gemini_fast(prompt, system_prompt):
   api_key = os.environ.get("GEMINI_API_KEY", "").strip() or GEMINI_API_KEY
   if not GEMINI_SDK_AVAILABLE or not api_key or google_genai is None:
     return None
+
   client = google_genai.Client(api_key=api_key)
-  resp = client.models.generate_content(
-      model="gemini-3.8-flash",
-      contents=f"{system_prompt}\n\nUser: {prompt}",
-  )
-  return (getattr(resp, "text", None) or "").strip()
+  last_err = None
+
+  for attempt in range(3):
+    try:
+      resp = client.models.generate_content(
+          model="gemini-3.8-flash",
+          contents=f"{system_prompt}\n\nUser: {prompt}",
+      )
+      text = (getattr(resp, "text", None) or "").strip()
+      if text:
+        return text
+    except Exception as e:
+      last_err = e
+      err_str = str(e)
+      if "503" in err_str or "UNAVAILABLE" in err_str:
+        time.sleep(1.5 * (attempt + 1))
+        continue
+      raise
+
+  if last_err:
+    raise last_err
+  return None
+
 
 def ask_ai_brain(prompt, system_prompt=""):
-    try:
-        low_p = (prompt or "").lower()
-        if any(k in low_p for k in ["prayer", "namaz", "namazer somoy", "নামাজ"]):
-            return get_prayer_times()
+  try:
+    low_p = (prompt or "").lower()
+    if any(k in low_p for k in ["prayer", "namaz", "namazer somoy", "নামাজ"]):
+      return get_prayer_times()
 
-        api_key = os.environ.get("GEMINI_API_KEY", "").strip() or GEMINI_API_KEY
-        if not GEMINI_SDK_AVAILABLE or google_genai is None:
-            return "Gemini SDK পাওয়া যায়নি। requirements.txt-এ google-genai ইনস্টল করে Redeploy দাও।"
-        if not api_key:
-            return "GEMINI_API_KEY সেট করা নেই। Render Environment-এ GEMINI_API_KEY বসিয়ে Redeploy দাও।"
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip() or GEMINI_API_KEY
+    if not GEMINI_SDK_AVAILABLE or google_genai is None:
+      return (
+          "Gemini SDK পাওয়া যায়নি। requirements.txt-এ google-genai ইনস্টল করে"
+          " Redeploy দাও।"
+      )
+    if not api_key:
+      return (
+          "GEMINI_API_KEY সেট করা নেই। Render Environment-এ GEMINI_API_KEY"
+          " বসিয়ে Redeploy দাও।"
+      )
 
-        if "pdf" in low_p:
-            topic = re.sub(r'\b(make|create|generate|give|me|a|on|about|pdf|notes|study)\b', '', low_p, flags=re.IGNORECASE).strip()
-            if not topic:
-                topic = "General Study Topic"
-            study_prompt = f"Write concise study notes on: '{topic}'."
-            notes = _ask_gemini_fast(study_prompt, "Write concise, structured study notes.") or f"Study notes on {topic}."
-            ok, path_or_err = generate_study_pdf(topic, notes)
-            if ok:
-                return f"ওমর, '{topic}' স্টাডি PDF সেভ হয়েছে: {path_or_err}"
-            return f"ফাইল সেভ হয়েছে: {path_or_err}"
+    if "pdf" in low_p:
+      topic = (
+          re.sub(
+              r"\b(make|create|generate|give|me|a|on|about|pdf|notes|study)\b",
+              "",
+              low_p,
+              flags=re.IGNORECASE,
+          ).strip()
+          or "General Study Topic"
+      )
+      study_prompt = f"Write concise study notes on: '{topic}'."
+      notes = (
+          _ask_gemini_fast(study_prompt, "Write concise, structured study notes.")
+          or f"Study notes on {topic}."
+      )
+      ok, path_or_err = generate_study_pdf(topic, notes)
+      if ok:
+        return f"ওমর, '{topic}' স্টাডি PDF সেভ হয়েছে: {path_or_err}"
+      return f"ফাইল সেভ হয়েছে: {path_or_err}"
 
-        default_persona = (
-            "You are AeRo Ai, Omar's ultra-fast AI assistant. Reply instantly in 1-2 short sentences in Bengali, English, or Banglish."
-        )
-        sys_instruction = system_prompt or default_persona
+    default_persona = (
+        "You are AeRo Ai, Omar's ultra-fast AI assistant. Reply instantly in"
+        " 1-2 short sentences in Bengali, English, or Banglish."
+    )
+    sys_instruction = system_prompt or default_persona
 
-        gem_reply = _ask_gemini_fast(prompt, sys_instruction)
-        if gem_reply:
-            return gem_reply
-        return "Gemini থেকে খালি রেসপন্স এসেছে, আবার চেষ্টা করো।"
-    except Exception as e:
-        print(f"Gemini API Error: {e}")
-        return f"Gemini Error: {e}"
-
+    gem_reply = _ask_gemini_fast(prompt, sys_instruction)
+    if gem_reply:
+      return gem_reply
+    return "Gemini থেকে খালি রেসপন্স এসেছে, আবার চেষ্টা করো।"
+  except Exception as e:
+    if "503" in str(e) or "UNAVAILABLE" in str(e):
+      return (
+          "ওমর, Gemini সার্ভারে এখন সাময়িক চাপ আছে (503), কয়েক সেকেন্ড পর আবার"
+          " পাঠাও।"
+      )
+    return f"Gemini Error: {e}"
 # ============================================================
 # GLOBAL OBJECTS & TTS
 # ============================================================
