@@ -19,14 +19,16 @@ import folium
 try:
     from google import genai as google_genai
     GEMINI_SDK_AVAILABLE = True
-except ImportError:
+except Exception:
+    google_genai = None
     GEMINI_SDK_AVAILABLE = False
 
 # PDF Library Import
 try:
     from fpdf import FPDF
     PDF_AVAILABLE = True
-except ImportError:
+except Exception:
+    FPDF = None
     PDF_AVAILABLE = False
 
 # Safe Desktop Libraries Import
@@ -35,14 +37,14 @@ try:
     import pyttsx3
     import speech_recognition as sr
     DESKTOP_LIBS_AVAILABLE = True
-except ImportError:
+except Exception:
     DESKTOP_LIBS_AVAILABLE = False
 
 # Flask Import
 try:
     from flask import Flask, request, jsonify, render_template_string, send_from_directory
     REMOTE_ACCESS_AVAILABLE = True
-except ImportError:
+except Exception:
     REMOTE_ACCESS_AVAILABLE = False
 
 # UTF-8 Output
@@ -58,13 +60,12 @@ try:
     from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QBrush
     from PyQt5.QtWidgets import QApplication, QLabel, QMainWindow, QLineEdit, QPushButton
     PYQT_AVAILABLE = True
-except ImportError:
+except Exception:
     PYQT_AVAILABLE = False
 
 # ============================================================
 # CONFIGURATION & SECURITY STATE (OMAR'S CREDENTIALS)
 # ============================================================
-OLLAMA_MODEL = os.environ.get("AERO_OLLAMA_MODEL", "llama3")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
@@ -106,6 +107,7 @@ def scan_and_neutralize_threats(text_or_query):
 def generate_study_pdf(topic, content):
     user_profile = os.environ.get("USERPROFILE", os.path.expanduser("~"))
     desktop_path = os.path.join(user_profile, "Desktop")
+    os.makedirs(desktop_path, exist_ok=True)
     safe_name = re.sub(r'[^a-zA-Z0-9_-]', '_', topic)[:30].strip('_') or "Study_Notes"
     pdf_path = os.path.join(desktop_path, f"AeRo_{safe_name}.pdf")
 
@@ -176,74 +178,51 @@ def get_prayer_times():
     )
 
 def _ask_gemini_fast(prompt, system_prompt):
-    if not GEMINI_SDK_AVAILABLE or not GEMINI_API_KEY:
+    api_key = os.environ.get("GEMINI_API_KEY", "").strip() or GEMINI_API_KEY
+    if not GEMINI_SDK_AVAILABLE or not api_key or google_genai is None:
         return None
-    client = google_genai.Client(api_key=GEMINI_API_KEY)
+    client = google_genai.Client(api_key=api_key)
     resp = client.models.generate_content(
         model="gemini-2.5-flash",
         contents=f"{system_prompt}\n\nUser: {prompt}",
     )
-    return (resp.text or "").strip()
+    return (getattr(resp, "text", None) or "").strip()
 
 def ask_ai_brain(prompt, system_prompt=""):
     try:
-        low_p = prompt.lower()
-        if any(k in low_p for k in ["prayer", "namaz", "namazer somoy"]):
+        low_p = (prompt or "").lower()
+        if any(k in low_p for k in ["prayer", "namaz", "namazer somoy", "নামাজ"]):
             return get_prayer_times()
+
+        api_key = os.environ.get("GEMINI_API_KEY", "").strip() or GEMINI_API_KEY
+        if not GEMINI_SDK_AVAILABLE or google_genai is None:
+            return "Gemini SDK পাওয়া যায়নি। requirements.txt-এ google-genai ইনস্টল করে Redeploy দাও।"
+        if not api_key:
+            return "GEMINI_API_KEY সেট করা নেই। Render Environment-এ GEMINI_API_KEY বসিয়ে Redeploy দাও।"
 
         if "pdf" in low_p:
             topic = re.sub(r'\b(make|create|generate|give|me|a|on|about|pdf|notes|study)\b', '', low_p, flags=re.IGNORECASE).strip()
             if not topic:
                 topic = "General Study Topic"
             study_prompt = f"Write concise study notes on: '{topic}'."
-            notes = ""
-            try:
-                notes = _ask_gemini_fast(study_prompt, "Write concise, structured study notes.") or ""
-            except Exception:
-                notes = ""
-            if not notes:
-                response = ollama.chat(model=OLLAMA_MODEL, messages=[{"role": "user", "content": study_prompt}], options={"num_predict": 160})
-                notes = response["message"]["content"] if (response and "message" in response) else f"Study notes on {topic}."
+            notes = _ask_gemini_fast(study_prompt, "Write concise, structured study notes.") or f"Study notes on {topic}."
             ok, path_or_err = generate_study_pdf(topic, notes)
             if ok:
-                return f"ওমর, '{topic}' স্টাডি PDF ডেস্কটপে সেভ হয়েছে: {path_or_err}"
-            else:
-                return f"ফাইল সেভ হয়েছে: {path_or_err}"
+                return f"ওমর, '{topic}' স্টাডি PDF সেভ হয়েছে: {path_or_err}"
+            return f"ফাইল সেভ হয়েছে: {path_or_err}"
 
         default_persona = (
-            "You are AeRo Ai, Omar's ultra-fast AI assistant. Reply instantly in 1 short sentence in Bengali, English, or Banglish."
+            "You are AeRo Ai, Omar's ultra-fast AI assistant. Reply instantly in 1-2 short sentences in Bengali, English, or Banglish."
         )
         sys_instruction = system_prompt or default_persona
 
-        try:
-            gem_reply = _ask_gemini_fast(prompt, sys_instruction)
-            if gem_reply:
-                return gem_reply
-        except Exception:
-            pass
-
-        messages = [
-            {"role": "system", "content": sys_instruction},
-            {"role": "user", "content": prompt}
-        ]
-        
-        response = ollama.chat(
-            model=OLLAMA_MODEL, 
-            messages=messages,
-            options={
-                "temperature": 0.25,
-                "num_predict": 60,
-                "top_k": 20,
-                "top_p": 0.9
-            }
-        )
-        
-        if response and "message" in response:
-            return response["message"]["content"]
-        return "মশাই, লোকাল এআই রেসপন্স প্রস্তুত।"
+        gem_reply = _ask_gemini_fast(prompt, sys_instruction)
+        if gem_reply:
+            return gem_reply
+        return "Gemini থেকে খালি রেসপন্স এসেছে, আবার চেষ্টা করো।"
     except Exception as e:
-        print(f"Ollama Connection Error: {e}")
-        return "ওমর, Ollama সার্ভার চেক করো!"
+        print(f"Gemini API Error: {e}")
+        return f"Gemini Error: {e}"
 
 # ============================================================
 # GLOBAL OBJECTS & TTS
@@ -1101,8 +1080,12 @@ if __name__ == "__main__":
         threading.Thread(target=voice_listener_loop, daemon=True).start()
 
     if REMOTE_ACCESS_AVAILABLE:
-        threading.Thread(target=lambda: app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False, threaded=True), daemon=True).start()
-        print("AeRo Web Server running at http://localhost:5000")
+        port = int(os.environ.get("PORT", "5000"))
+        threading.Thread(
+            target=lambda: app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False, threaded=True),
+            daemon=True
+        ).start()
+        print(f"AeRo Web Server running at http://0.0.0.0:{port}")
 
     if PYQT_AVAILABLE:
         qt_app = QApplication(sys.argv)
