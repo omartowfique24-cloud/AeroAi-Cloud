@@ -9,11 +9,19 @@ import subprocess
 import sys
 import threading
 import time
+import uuid
 import webbrowser
 from email.message import EmailMessage
 import requests
 import ollama
 import folium
+
+# Optional Gemini SDK (Fast Main Brain)
+try:
+    from google import genai as google_genai
+    GEMINI_SDK_AVAILABLE = True
+except ImportError:
+    GEMINI_SDK_AVAILABLE = False
 
 # PDF Library Import
 try:
@@ -33,7 +41,7 @@ except ImportError:
 
 # Flask Import
 try:
-    from flask import Flask, request, jsonify, render_template_string
+    from flask import Flask, request, jsonify, render_template_string, send_from_directory
     REMOTE_ACCESS_AVAILABLE = True
 except ImportError:
     REMOTE_ACCESS_AVAILABLE = False
@@ -58,9 +66,14 @@ except ImportError:
 # CONFIGURATION & SECURITY STATE (OMAR'S CREDENTIALS)
 # ============================================================
 OLLAMA_MODEL = os.environ.get("AERO_OLLAMA_MODEL", "llama3")
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
 DUPLICATE_COMMAND_SECONDS = 1.5
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+UPLOAD_FOLDER = os.path.join(BASE_DIR, "aero_uploads")
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 SECURITY_STATE = {
     "is_authenticated": True,
@@ -72,6 +85,8 @@ SECURITY_STATE = {
 }
 
 LAST_KNOWN_VILLAGE = {"name": None}
+CONNECTED_DEVICES = {}
+LATEST_DEVICE_COORDS = {"lat": 23.8103, "lon": 90.4125, "label": "Default"}
 
 MALICIOUS_DOMAINS = [
     "free-gift", "win-prize", "hack", "phishing", "malware", "virus",
@@ -161,6 +176,16 @@ def get_prayer_times():
         "• ফজর: ৪:৪৮ AM | যোহর: ১২:৫৯ PM | আসর: ৪:৩৬ PM | মাগরিব: ৭:৩৬ PM | ইশা: ৯:০০ PM"
     )
 
+def _ask_gemini_fast(prompt, system_prompt):
+    if not GEMINI_SDK_AVAILABLE or not GEMINI_API_KEY:
+        return None
+    client = google_genai.Client(api_key=GEMINI_API_KEY)
+    resp = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=f"{system_prompt}\n\nUser: {prompt}",
+    )
+    return (resp.text or "").strip()
+
 def ask_ai_brain(prompt, system_prompt=""):
     try:
         low_p = prompt.lower()
@@ -172,8 +197,14 @@ def ask_ai_brain(prompt, system_prompt=""):
             if not topic:
                 topic = "General Study Topic"
             study_prompt = f"Write concise study notes on: '{topic}'."
-            response = ollama.chat(model=OLLAMA_MODEL, messages=[{"role": "user", "content": study_prompt}], options={"num_predict": 250})
-            notes = response["message"]["content"] if (response and "message" in response) else f"Study notes on {topic}."
+            notes = ""
+            try:
+                notes = _ask_gemini_fast(study_prompt, "Write concise, structured study notes.") or ""
+            except Exception:
+                notes = ""
+            if not notes:
+                response = ollama.chat(model=OLLAMA_MODEL, messages=[{"role": "user", "content": study_prompt}], options={"num_predict": 160})
+                notes = response["message"]["content"] if (response and "message" in response) else f"Study notes on {topic}."
             ok, path_or_err = generate_study_pdf(topic, notes)
             if ok:
                 return f"ওমর, '{topic}' স্টাডি PDF ডেস্কটপে সেভ হয়েছে: {path_or_err}"
@@ -181,10 +212,19 @@ def ask_ai_brain(prompt, system_prompt=""):
                 return f"ফাইল সেভ হয়েছে: {path_or_err}"
 
         default_persona = (
-            "You are AeRo Ai, Omar's ultra-fast AI assistant. Reply instantly in 1-2 short sentences in Bengali, English, or Banglish."
+            "You are AeRo Ai, Omar's ultra-fast AI assistant. Reply instantly in 1 short sentence in Bengali, English, or Banglish."
         )
+        sys_instruction = system_prompt or default_persona
+
+        try:
+            gem_reply = _ask_gemini_fast(prompt, sys_instruction)
+            if gem_reply:
+                return gem_reply
+        except Exception:
+            pass
+
         messages = [
-            {"role": "system", "content": system_prompt or default_persona},
+            {"role": "system", "content": sys_instruction},
             {"role": "user", "content": prompt}
         ]
         
@@ -192,8 +232,8 @@ def ask_ai_brain(prompt, system_prompt=""):
             model=OLLAMA_MODEL, 
             messages=messages,
             options={
-                "temperature": 0.3,
-                "num_predict": 120,
+                "temperature": 0.25,
+                "num_predict": 60,
                 "top_k": 20,
                 "top_p": 0.9
             }
@@ -512,7 +552,7 @@ if PYQT_AVAILABLE:
             painter.drawText(cx - 235, cy + 80, time_str)
 
 # ============================================================
-# WEB INTERFACE (INTERACTIVE GEN PIC/VIDEO, RELOAD HISTORY & ASK AERO)
+# WEB INTERFACE (ORGANIZED DARK UI, MEDIA UPLOAD & OPT-IN GPS)
 # ============================================================
 HTML_INTERFACE = """<!DOCTYPE html>
 <html>
@@ -520,44 +560,49 @@ HTML_INTERFACE = """<!DOCTYPE html>
     <title>AeRo Ai - Autonomous Terminal, Study PDF & 3D Village GPS</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { background-color: #0b141a; color: #e9edef; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 8px; display: flex; justify-content: center; align-items: center; min-height: 94vh; }
-        .app-container { display: flex; width: 1260px; max-width: 100%; height: 92vh; gap: 8px; }
-        .sidebar { width: 280px; background: #111b21; border-radius: 12px; display: flex; flex-direction: column; padding: 15px; box-sizing: border-box; }
-        .sidebar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #222d34; padding-bottom: 8px; }
+        * { box-sizing: border-box; }
+        body { background-color: #0b141a; color: #e9edef; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .app-container { display: flex; width: 1320px; max-width: 100%; height: 93vh; gap: 10px; }
+        .sidebar { width: 270px; background: #111b21; border: 1px solid #1f2c34; border-radius: 14px; display: flex; flex-direction: column; padding: 14px; }
+        .sidebar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid #222d34; padding-bottom: 10px; }
         .sidebar-title { color: #00a884; font-size: 15px; font-weight: bold; }
-        .new-chat-btn { background: #00a884; color: #fff; border: none; padding: 5px 10px; border-radius: 6px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        .new-chat-btn { background: #00a884; color: #fff; border: none; padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; }
         .new-chat-btn:hover { background: #008f6f; }
-        .history-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
-        .history-item { background: #202c33; padding: 7px 10px; border-radius: 7px; font-size: 13px; color: #d1d7db; display: flex; justify-content: space-between; align-items: center; }
+        .history-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+        .history-item { background: #1d2b33; padding: 8px 10px; border-radius: 8px; font-size: 13px; color: #d1d7db; display: flex; justify-content: space-between; align-items: center; border: 1px solid #263742; }
         .history-text { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; cursor: pointer; }
         .history-text:hover { color: #00a884; }
         .delete-btn { background: transparent; border: none; color: #8696a0; cursor: pointer; font-size: 14px; padding: 0 4px; }
         .delete-btn:hover { color: #ff4d4d; }
-        .main-workspace { flex: 1; display: flex; flex-direction: column; gap: 15px; }
-        .header-card { background: #111b21; border-radius: 10px; padding: 8px 12px; display: flex; justify-content: space-between; align-items: center; }
+        .main-workspace { flex: 1; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+        .header-card { background: #111b21; border: 1px solid #1f2c34; border-radius: 14px; padding: 10px 14px; display: flex; justify-content: space-between; align-items: center; }
         .logo-area { display: flex; align-items: center; gap: 12px; }
-        .logo-img { height: 36px; width: 36px; border-radius: 50%; border: 1.5px solid #00a884; }
+        .logo-img { height: 38px; width: 38px; border-radius: 50%; border: 1.5px solid #00a884; object-fit: cover; }
         .logo-text-group h1 { margin: 0; font-size: 20px; color: #00a884; }
         .logo-text-group p { margin: 2px 0 0 0; font-size: 10px; color: #8696a0; letter-spacing: 2px; }
-        .telemetry-bar { display: flex; gap: 7px; font-size: 12px; font-weight: bold; color: #00a884; }
-        .tele-badge { background: #202c33; padding: 4px 7px; border-radius: 6px; }
-        .workspace { display: flex; width: 100%; gap: 8px; flex: 1; min-height: 0; }
-        .chat-card { background: #111b21; border-radius: 10px; padding: 10px; flex: 1; display: flex; flex-direction: column; min-height: 0; }
-        #log { color: #e9edef; font-size: 14px; background: #0b141a; padding: 8px; border-radius: 8px; flex: 1; overflow-y: auto; margin-bottom: 6px; border: 1px solid #222d34; display: flex; flex-direction: column; gap: 5px; }
-        .log-msg { padding: 5px 8px; border-radius: 6px; max-width: 90%; word-break: break-word; }
-        .user-msg { background: #005c4b; align-self: flex-end; }
-        .ai-msg { background: #202c33; align-self: flex-start; color: #00a884; border: 1px solid #222d34; white-space: pre-line; }
-        .aero-search-container { display: flex; align-items: center; background: #202c33; border-radius: 8px; padding: 5px 8px; margin-bottom: 6px; border: 1px solid #222d34; }
-        .aero-search-input { flex: 1; background: transparent; border: none; color: #e9edef; font-size: 15px; outline: none; }
-        .btn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5px; }
-        button { background: #00a884; color: #fff; border: none; padding: 7px; border-radius: 7px; font-weight: bold; font-size: 13px; cursor: pointer; }
+        .telemetry-bar { display: flex; gap: 8px; font-size: 12px; font-weight: bold; color: #00a884; }
+        .tele-badge { background: #1d2b33; padding: 5px 9px; border-radius: 8px; border: 1px solid #263742; }
+        .workspace { display: flex; width: 100%; gap: 10px; flex: 1; min-height: 0; }
+        .chat-card { background: #111b21; border: 1px solid #1f2c34; border-radius: 14px; padding: 12px; flex: 1; display: flex; flex-direction: column; min-height: 0; gap: 8px; }
+        #log { color: #e9edef; font-size: 14px; background: #0b141a; padding: 10px; border-radius: 10px; flex: 1; overflow-y: auto; border: 1px solid #222d34; display: flex; flex-direction: column; gap: 7px; }
+        .log-msg { padding: 7px 10px; border-radius: 8px; max-width: 90%; word-break: break-word; line-height: 1.45; }
+        .user-msg { background: #005c4b; align-self: flex-end; color: #fff; }
+        .ai-msg { background: #1d2b33; align-self: flex-start; color: #39ff14; border: 1px solid #263742; white-space: pre-line; }
+        .aero-search-container { display: flex; align-items: center; gap: 8px; background: #1d2b33; border-radius: 10px; padding: 6px 10px; border: 1px solid #263742; }
+        .aero-search-input { flex: 1; background: transparent; border: none; color: #e9edef; font-size: 14px; outline: none; }
+        .upload-btn { background: #263742; color: #00f0ff; border: 1px solid #00a884; padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: bold; cursor: pointer; }
+        .upload-btn:hover { background: #00a884; color: #000; }
+        .btn-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+        button { background: #00a884; color: #fff; border: none; padding: 8px; border-radius: 8px; font-weight: bold; font-size: 12px; cursor: pointer; }
         button:hover { background: #008f6f; }
         #mic-btn { background: #ea0038; }
-        .control-panel { background: #111b21; border-radius: 10px; padding: 10px; width: 320px; display: flex; flex-direction: column; gap: 7px; }
-        .panel-title { color: #00a884; font-size: 15px; font-weight: bold; border-bottom: 1px solid #222d34; padding-bottom: 6px; }
-        .media-preview { flex: 1; background: #0b141a; border: 1.5px dashed #222d34; border-radius: 8px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #8696a0; font-size: 13px; padding: 7px; overflow: hidden; }
-        .osint-input-group { display: flex; gap: 5px; margin-bottom: 5px; }
-        .osint-input { flex: 1; background: #0b141a; border: 1px solid #222d34; color: #00a884; padding: 5px; border-radius: 5px; font-size: 12px; }
+        .control-panel { background: #111b21; border: 1px solid #1f2c34; border-radius: 14px; padding: 12px; width: 350px; display: flex; flex-direction: column; gap: 8px; }
+        .panel-title { color: #00a884; font-size: 14px; font-weight: bold; border-bottom: 1px solid #222d34; padding-bottom: 6px; }
+        .osint-input-group { display: flex; gap: 6px; }
+        .osint-input { flex: 1; background: #0b141a; border: 1px solid #263742; color: #00a884; padding: 6px 8px; border-radius: 7px; font-size: 12px; }
+        .media-preview { flex: 1; background: #0b141a; border: 1.5px dashed #263742; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #8696a0; font-size: 12px; padding: 8px; overflow: hidden; min-height: 200px; }
+        .devices-box { background: #0b141a; border: 1px solid #222d34; border-radius: 10px; padding: 8px; font-size: 12px; max-height: 110px; overflow-y: auto; color: #d1d7db; }
+        .device-row { padding: 4px 0; border-bottom: 1px dashed #222d34; }
     </style>
 </head>
 <body>
@@ -574,6 +619,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
             </div>
             <button onclick="clearAllHistory()" style="background:#ea0038; margin-top:10px;">CLEAR ALL</button>
         </div>
+
         <div class="main-workspace">
             <div class="header-card">
                 <div class="logo-area">
@@ -589,29 +635,41 @@ HTML_INTERFACE = """<!DOCTYPE html>
                     <div class="tele-badge">28°C (Rangpur)</div>
                 </div>
             </div>
+
             <div class="workspace">
                 <div class="chat-card">
                     <div id="log">
                         <div class="log-msg ai-msg">Welcome back, Omar sir. Ask AeRo Terminal, Study PDF & 3D Village GPS Online.</div>
                     </div>
+
                     <div class="aero-search-container">
+                        <input type="file" id="mediaFileInput" accept="image/*,video/*" style="display:none;" onchange="uploadMediaFile(this)">
+                        <button type="button" class="upload-btn" onclick="document.getElementById('mediaFileInput').click()">📎 PIC / VIDEO</button>
                         <input type="text" id="cmd" class="aero-search-input" placeholder="Ask AeRo: Study PDF, prompt, or message..." autocomplete="off">
                     </div>
+
                     <div class="btn-grid">
                         <button type="button" onclick="sendCommand()">EXECUTE</button>
                         <button type="button" id="mic-btn" onclick="toggleVoice()">🎙️ SPEAK</button>
                         <button type="button" onclick="fetchTrafficCam()">📷 LIVE TRAFFIC</button>
                         <button type="button" onclick="generateImage()">🖼️ GEN PIC</button>
                         <button type="button" onclick="generateVideo()">🎬 GEN VIDEO</button>
+                        <button type="button" onclick="enableOptInGPS()">📍 ALLOW GPS</button>
                     </div>
                 </div>
+
                 <div class="control-panel">
                     <div class="panel-title">TELECOM OSINT & 3D VILLAGE GPS</div>
                     <div class="osint-input-group">
                         <input type="text" id="targetInput" class="osint-input" placeholder="017xxxxxxxx">
-                        <button type="button" onclick="runOSINTScan()" style="padding: 5px 10px; font-size:11px;">CHECK SIM</button>
+                        <button type="button" onclick="runOSINTScan()" style="padding: 6px 10px; font-size:11px;">CHECK SIM</button>
                     </div>
-                    <div class="media-preview" id="media-output">[Click 3D LIVE GPS MAP to load Satellite View]</div>
+
+                    <div class="media-preview" id="media-output">[Click ALLOW GPS or 3D LIVE GPS MAP to load Satellite View]</div>
+
+                    <div class="panel-title" style="font-size:12px;">OPT-IN CONNECTED DEVICES</div>
+                    <div class="devices-box" id="device-list">Waiting for user GPS permission...</div>
+
                     <button type="button" onclick="fetchLocation()">📍 3D LIVE GPS & VILLAGE MAP</button>
                     <button type="button" onclick="clearLogs()" style="background:#ea0038;">RESET TERMINAL</button>
                 </div>
@@ -620,6 +678,12 @@ HTML_INTERFACE = """<!DOCTYPE html>
     </div>
 
     <script>
+        let currentDeviceId = localStorage.getItem("aero_device_id");
+        if (!currentDeviceId) {
+            currentDeviceId = "Device-" + Math.random().toString(36).substring(2, 8).toUpperCase();
+            localStorage.setItem("aero_device_id", currentDeviceId);
+        }
+
         function updateDateTime() {
             const now = new Date();
             document.getElementById("date-box").innerText = now.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).toUpperCase();
@@ -628,45 +692,114 @@ HTML_INTERFACE = """<!DOCTYPE html>
         setInterval(updateDateTime, 1000);
         updateDateTime();
 
-        window.addEventListener('DOMContentLoaded', () => {
-            if (navigator.geolocation) {
-                navigator.geolocation.getCurrentPosition(p => {
-                    fetch('/log_visitor_location', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ lat: p.coords.latitude, lon: p.coords.longitude })
-                    });
-                }, err => {
-                    console.log("Visitor geolocation prompt ignored or denied.");
-                });
+        async function sendOptInLocation(pos) {
+            let batteryLevel = "N/A";
+            if ("getBattery" in navigator) {
+                try {
+                    const bat = await navigator.getBattery();
+                    batteryLevel = Math.round(bat.level * 100) + "%";
+                } catch (e) {}
             }
-        });
+            const lat = pos.coords.latitude;
+            const lon = pos.coords.longitude;
+            document.getElementById("media-output").innerHTML = `<iframe width="100%" height="100%" frameborder="0" src="/show_map?lat=${lat}&lon=${lon}&zoom=17" style="border-radius:8px;"></iframe>`;
+            fetch('/log_visitor_location', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    device_id: currentDeviceId + " (" + navigator.platform + ")",
+                    lat: lat,
+                    lon: lon,
+                    accuracy: Math.round(pos.coords.accuracy) + "m",
+                    battery: batteryLevel
+                })
+            });
+        }
+
+        function enableOptInGPS() {
+            if (!("geolocation" in navigator)) {
+                alert("Geolocation not supported.");
+                return;
+            }
+            navigator.geolocation.watchPosition(
+                sendOptInLocation,
+                (err) => {
+                    const log = document.getElementById("log");
+                    log.innerHTML += `<div class="log-msg ai-msg" style="color:#ff4d4d;">> [GPS]: Location permission required or denied by user.</div>`;
+                },
+                { enableHighAccuracy: true, maximumAge: 5000, timeout: 10000 }
+            );
+        }
+
+        function refreshDevices() {
+            fetch('/get_devices')
+                .then(r => r.json())
+                .then(list => {
+                    const box = document.getElementById("device-list");
+                    if (!list.length) {
+                        box.innerHTML = "Waiting for user GPS permission...";
+                        return;
+                    }
+                    box.innerHTML = list.map(d => `
+                        <div class="device-row">
+                            <strong style="color:#00a884;">${d.device_id}</strong> [${d.battery}]<br>
+                            Lat: ${d.lat}, Lon: ${d.lon} (${d.last_seen})
+                        </div>
+                    `).join("");
+                })
+                .catch(() => {});
+        }
+        setInterval(refreshDevices, 4000);
+        refreshDevices();
 
         document.getElementById("cmd").addEventListener("keydown", function(e) {
             if (e.key === "Enter") { e.preventDefault(); sendCommand(); }
         });
 
+        async function uploadMediaFile(input) {
+            const file = input.files && input.files[0];
+            if (!file) return;
+            const log = document.getElementById("log");
+            const preview = document.getElementById("media-output");
+
+            const formData = new FormData();
+            formData.append("file", file);
+
+            log.innerHTML += `<div class="log-msg user-msg">>> Uploading media: ${file.name}</div>`;
+            try {
+                const res = await fetch("/upload_media", { method: "POST", body: formData });
+                const data = await res.json();
+                if (data.status === "success") {
+                    if (data.type === "video") {
+                        preview.innerHTML = `<video src="${data.url}" controls autoplay loop style="width:100%; height:100%; object-fit:cover; border-radius:8px;"></video>`;
+                        log.innerHTML += `<div class="log-msg ai-msg">> Video uploaded: ${file.name}</div>`;
+                    } else {
+                        preview.innerHTML = `<img src="${data.url}" style="width:100%; height:100%; object-fit:cover; border-radius:8px;">`;
+                        log.innerHTML += `<div class="log-msg ai-msg">> Image uploaded: ${file.name}</div>`;
+                    }
+                    saveToHistory("Media: " + file.name);
+                } else {
+                    log.innerHTML += `<div class="log-msg ai-msg" style="color:#ff4d4d;">> Upload failed: ${data.message}</div>`;
+                }
+            } catch (err) {
+                log.innerHTML += `<div class="log-msg ai-msg" style="color:#ff4d4d;">> Media upload error!</div>`;
+            }
+            log.scrollTop = log.scrollHeight;
+            input.value = "";
+        }
+
         function saveToHistory(text) {
             const historyList = document.getElementById("history-list");
             const item = document.createElement("div");
             item.className = "history-item";
-            
             const textSpan = document.createElement("span");
             textSpan.className = "history-text";
             textSpan.textContent = text;
-            textSpan.onclick = function() {
-                loadHistoryItem(text);
-            };
-
+            textSpan.onclick = function() { loadHistoryItem(text); };
             const deleteBtn = document.createElement("button");
             deleteBtn.className = "delete-btn";
             deleteBtn.innerHTML = "🗑️";
-            deleteBtn.title = "Delete item";
-            deleteBtn.onclick = function(e) {
-                e.stopPropagation();
-                item.remove();
-            };
-
+            deleteBtn.onclick = function(e) { e.stopPropagation(); item.remove(); };
             item.appendChild(textSpan);
             item.appendChild(deleteBtn);
             historyList.prepend(item);
@@ -702,7 +835,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
 
             const loadingMsg = document.createElement("div");
             loadingMsg.className = "log-msg ai-msg";
-            loadingMsg.textContent = "AeRo AI is processing...";
+            loadingMsg.textContent = "AeRo AI processing...";
             log.appendChild(loadingMsg);
             log.scrollTop = log.scrollHeight;
 
@@ -727,10 +860,10 @@ HTML_INTERFACE = """<!DOCTYPE html>
             if (!target) return;
             saveToHistory("OSINT: " + target);
 
-            fetch('/osint', { 
-                method: 'POST', 
-                headers: { 'Content-Type': 'application/json' }, 
-                body: JSON.stringify({ target: target }) 
+            fetch('/osint', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target: target })
             })
             .then(r => r.json())
             .then(d => {
@@ -742,13 +875,12 @@ HTML_INTERFACE = """<!DOCTYPE html>
         function fetchLocation() {
             const log = document.getElementById("log");
             if (navigator.geolocation) {
-                log.innerHTML += `<div class="log-msg ai-msg">> Requesting 3D Satellite GPS lock...</div>`;
+                log.innerHTML += `<div class="log-msg ai-msg">> Requesting 3D Satellite GPS lock (User Permission Required)...</div>`;
                 navigator.geolocation.watchPosition(p => {
                     let lat = p.coords.latitude;
                     let lon = p.coords.longitude;
-                    
-                    document.getElementById("media-output").innerHTML = `<iframe width="100%" height="100%" frameborder="0" src="/show_map?lat=${lat}&lon=${lon}&zoom=17" style="border-radius:6px;"></iframe>`;
-                    
+                    sendOptInLocation(p);
+
                     fetch('/track_live_village', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -762,7 +894,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
                         }
                     });
                 }, err => {
-                    log.innerHTML += `<div class="log-msg ai-msg" style="color:#ff4d4d;">> [GPS ERROR]: Please open via http://localhost:5000 and allow location access in browser!</div>`;
+                    log.innerHTML += `<div class="log-msg ai-msg" style="color:#ff4d4d;">> [GPS ERROR]: Please allow location access in browser!</div>`;
                     log.scrollTop = log.scrollHeight;
                 }, { enableHighAccuracy: true, maximumAge: 5000 });
             } else {
@@ -771,7 +903,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
         }
 
         function fetchTrafficCam() {
-            document.getElementById("media-output").innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/live_stream?channel=UCupvZG-5ko_eiXAupbDfxWw" frameborder="0" allowfullscreen style="border-radius:6px;"></iframe>`;
+            document.getElementById("media-output").innerHTML = `<iframe width="100%" height="100%" src="https://www.youtube.com/embed/live_stream?channel=UCupvZG-5ko_eiXAupbDfxWw" frameborder="0" allowfullscreen style="border-radius:8px;"></iframe>`;
         }
 
         function generateImage() {
@@ -780,8 +912,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
             document.getElementById("media-output").innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:5px; height:100%; justify-content:center; align-items:center;">
                     <div style="color:#00a884; font-size:12px;">🖼️ Generating: "${prompt}"</div>
-                    <img src="https://picsum.photos/300/140?random=${Math.random()}" style="width:100%; height:110px; object-fit:cover; border-radius:6px;">
-                    <input type="file" id="imgUpload" accept="image/*" style="font-size:11px; color:#fff;">
+                    <img src="https://picsum.photos/300/150?random=${Math.random()}" style="width:100%; height:130px; object-fit:cover; border-radius:8px;">
                 </div>`;
             saveToHistory("Gen Pic: " + prompt);
         }
@@ -792,8 +923,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
             document.getElementById("media-output").innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:5px; height:100%; justify-content:center; align-items:center;">
                     <div style="color:#00a884; font-size:12px;">🎬 Rendering Video: "${prompt}"</div>
-                    <div style="background:#202c33; padding:15px; border-radius:6px; color:#39ff14; font-size:12px;">Video Stream Active & Rendered Successfully!</div>
-                    <input type="file" id="vidUpload" accept="video/*" style="font-size:11px; color:#fff;">
+                    <div style="background:#1d2b33; padding:14px; border-radius:8px; color:#39ff14; font-size:12px;">Video Stream Active & Rendered Successfully!</div>
                 </div>`;
             saveToHistory("Gen Video: " + prompt);
         }
@@ -820,13 +950,58 @@ if REMOTE_ACCESS_AVAILABLE:
     def index():
         return render_template_string(HTML_INTERFACE)
 
+    @app.route("/aero_uploads/<path:filename>")
+    def serve_uploaded_media(filename):
+        return send_from_directory(UPLOAD_FOLDER, filename)
+
+    @app.route("/upload_media", methods=["POST"])
+    def upload_media():
+        if "file" not in request.files:
+            return jsonify({"status": "error", "message": "No file selected"}), 400
+        f = request.files["file"]
+        if not f.filename:
+            return jsonify({"status": "error", "message": "Empty filename"}), 400
+        ext = os.path.splitext(f.filename)[1].lower()
+        allowed_img = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
+        allowed_vid = {".mp4", ".webm", ".mov", ".mkv"}
+        if ext not in allowed_img and ext not in allowed_vid:
+            return jsonify({"status": "error", "message": "Unsupported file type"}), 400
+        safe_fname = f"{uuid.uuid4().hex[:8]}_{re.sub(r'[^a-zA-Z0-9._-]', '_', f.filename)}"
+        save_path = os.path.join(UPLOAD_FOLDER, safe_fname)
+        f.save(save_path)
+        media_type = "video" if ext in allowed_vid else "image"
+        return jsonify({
+            "status": "success",
+            "type": media_type,
+            "url": f"/aero_uploads/{safe_fname}"
+        })
+
     @app.route("/log_visitor_location", methods=['POST'])
     def log_visitor_location():
         data = request.get_json(silent=True) or {}
         lat = data.get('lat')
         lon = data.get('lon')
-        print(f"\n[⚠️ AERO VISITOR TELEMETRY ALERT]: Visitor GPS Lock Detected! Latitude: {lat}, Longitude: {lon}")
+        if lat is None or lon is None:
+            return jsonify({"status": "permission_required"}), 400
+        device_id = data.get('device_id', request.remote_addr)
+        CONNECTED_DEVICES[device_id] = {
+            "device_id": device_id,
+            "lat": round(float(lat), 6),
+            "lon": round(float(lon), 6),
+            "accuracy": data.get("accuracy", "N/A"),
+            "battery": data.get("battery", "N/A"),
+            "last_seen": time.strftime("%I:%M:%S %p"),
+            "status": "ONLINE (Opt-In)"
+        }
+        LATEST_DEVICE_COORDS["lat"] = float(lat)
+        LATEST_DEVICE_COORDS["lon"] = float(lon)
+        LATEST_DEVICE_COORDS["label"] = device_id
+        print(f"\n[AERO OPT-IN TELEMETRY]: {device_id} -> Lat: {lat}, Lon: {lon}")
         return jsonify({"status": "success"})
+
+    @app.route("/get_devices", methods=["GET"])
+    def get_devices():
+        return jsonify(list(CONNECTED_DEVICES.values()))
 
     @app.route("/osint", methods=['POST'])
     def handle_osint():
@@ -837,8 +1012,8 @@ if REMOTE_ACCESS_AVAILABLE:
 
     @app.route("/show_map")
     def show_map():
-        lat = float(request.args.get('lat', 23.8103))
-        lon = float(request.args.get('lon', 90.4125))
+        lat = float(request.args.get('lat', LATEST_DEVICE_COORDS["lat"]))
+        lon = float(request.args.get('lon', LATEST_DEVICE_COORDS["lon"]))
         zoom = int(request.args.get('zoom', 16))
         
         m = folium.Map(
@@ -847,7 +1022,7 @@ if REMOTE_ACCESS_AVAILABLE:
             tiles='https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
             attr='Esri &mdash; Satellite View'
         )
-        folium.Marker([lat, lon], tooltip="AeRo Live Target", popup="Live GPS Target Node").add_to(m)
+        folium.Marker([lat, lon], tooltip=LATEST_DEVICE_COORDS["label"], popup="Opt-In Live GPS Target").add_to(m)
         return m._repr_html_()
 
     @app.route("/track_live_village", methods=['POST'])
