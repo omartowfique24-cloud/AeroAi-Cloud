@@ -949,7 +949,65 @@ HTML_INTERFACE = """<!DOCTYPE html>
 
         function clearLogs() { document.getElementById("log").innerHTML = `<div class="log-msg ai-msg">Terminal cleared.</div>`; }
         function clearAllHistory() { document.getElementById("history-list").innerHTML = ""; }
-        function toggleVoice() { alert("Use desktop mic or Chrome for web voice."); }
+
+        let aeroRecognition = null;
+        let isListening = false;
+
+        function toggleVoice() {
+            const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+            const log = document.getElementById("log");
+            const micBtn = document.getElementById("mic-btn");
+
+            if (!SpeechRec) {
+                log.innerHTML += `<div class="log-msg ai-msg" style="color:#ff4d4d;">> [MIC]: এই ব্রাউজারে Web Speech API সাপোর্ট নেই। Chrome ব্যবহার করো।</div>`;
+                log.scrollTop = log.scrollHeight;
+                return;
+            }
+
+            if (isListening && aeroRecognition) {
+                aeroRecognition.stop();
+                return;
+            }
+
+            aeroRecognition = new SpeechRec();
+            aeroRecognition.lang = "bn-BD";
+            aeroRecognition.interimResults = false;
+            aeroRecognition.maxAlternatives = 1;
+
+            aeroRecognition.onstart = function () {
+                isListening = true;
+                micBtn.textContent = "🛑 LISTENING...";
+                log.innerHTML += `<div class="log-msg ai-msg">> [MIC]: শুনছি... কথা বলো।</div>`;
+                log.scrollTop = log.scrollHeight;
+            };
+
+            aeroRecognition.onresult = function (event) {
+                const transcript = (event.results[0] && event.results[0][0] && event.results[0][0].transcript) || "";
+                if (transcript.trim()) {
+                    document.getElementById("cmd").value = transcript.trim();
+                    sendCommand();
+                }
+            };
+
+            aeroRecognition.onerror = function (event) {
+                log.innerHTML += `<div class="log-msg ai-msg" style="color:#ff4d4d;">> [MIC ERROR]: ${event.error} (Browser-এ Mic permission Allow করো)</div>`;
+                log.scrollTop = log.scrollHeight;
+            };
+
+            aeroRecognition.onend = function () {
+                isListening = false;
+                micBtn.textContent = "🎙️ SPEAK";
+            };
+
+            try {
+                aeroRecognition.start();
+            } catch (err) {
+                isListening = false;
+                micBtn.textContent = "🎙️ SPEAK";
+                log.innerHTML += `<div class="log-msg ai-msg" style="color:#ff4d4d;">> [MIC ERROR]: ${err}</div>`;
+                log.scrollTop = log.scrollHeight;
+            }
+        }
     </script>
 </body>
 </html>
@@ -957,6 +1015,10 @@ HTML_INTERFACE = """<!DOCTYPE html>
 
 if REMOTE_ACCESS_AVAILABLE:
     app = Flask(__name__)
+
+    @app.errorhandler(Exception)
+    def handle_any_exception(e):
+        return jsonify({"status": "error", "message": str(e)}), 500
 
     @app.after_request
     def add_cors_headers(response):
@@ -1109,7 +1171,7 @@ if REMOTE_ACCESS_AVAILABLE:
                 speak(reply)
             return jsonify({"status": "success", "reply": reply})
         except Exception as e:
-            return jsonify({"status": "error", "message": str(e)})
+            return jsonify({"status": "error", "message": str(e)}), 500
 
 # ============================================================
 # MAIN EXECUTION
