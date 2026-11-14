@@ -102,6 +102,87 @@ def scan_and_neutralize_threats(text_or_query):
     return True, text_or_query, None
 
 # ============================================================
+# FORCE JOB CIRCULAR MONITOR (EMAIL + SMS GATEWAY)
+# ============================================================
+CIRCULAR_SOURCES = [
+    # এখানে সেনাবাহিনী, নৌবাহিনী ও বিমান বাহিনীর নির্ধারিত সার্কুলার পেজ URL বসাও
+]
+
+SENT_CIRCULAR_LINKS = set()
+
+
+def send_email_alert(subject, body):
+    sender_email = SECURITY_STATE.get("user_email", "").strip()
+    app_password = os.environ.get("GMAIL_APP_PASSWORD", "").strip() or SECURITY_STATE.get("gmail_app_password", "").strip()
+    if not sender_email or not app_password or app_password == "your_gmail_app_password_here":
+        return False, "Gmail App Password সেট করা নেই।"
+    try:
+        msg = EmailMessage()
+        msg["Subject"] = subject
+        msg["From"] = sender_email
+        msg["To"] = sender_email
+        msg.set_content(body)
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=15) as smtp:
+            smtp.login(sender_email, app_password)
+            smtp.send_message(msg)
+        return True, "Email sent"
+    except Exception as e:
+        return False, str(e)
+
+
+def send_sms_alert(message_text):
+    sms_api_url = os.environ.get("SMS_API_URL", "").strip()
+    sms_api_key = os.environ.get("SMS_API_KEY", "").strip()
+    phone = SECURITY_STATE.get("user_phone", "").strip()
+    if not sms_api_url or not sms_api_key or not phone:
+        return False, "SMS Gateway URL/API Key সেট করা নেই।"
+    try:
+        res = requests.post(
+            sms_api_url,
+            json={"to": phone, "api_key": sms_api_key, "message": message_text},
+            timeout=15,
+        )
+        return res.ok, f"HTTP {res.status_code}"
+    except Exception as e:
+        return False, str(e)
+
+
+def check_force_job_circulars():
+    keywords = ["সেনাবাহিনী", "নৌবাহিনী", "বিমান বাহিনী", "army", "navy", "air force", "circular", "recruit", "ভর্তি", "নিয়োগ"]
+    found_alerts = []
+
+    for src_url in CIRCULAR_SOURCES:
+        try:
+            resp = requests.get(src_url, headers={"User-Agent": "AeRoAI-CircularBot/1.0"}, timeout=15)
+            if not resp.ok:
+                continue
+            html = resp.text
+            links = re.findall(r'href=["\']([^"\']+)["\']', html, flags=re.IGNORECASE)
+            for href in links:
+                full_url = requests.compat.urljoin(src_url, href)
+                low_href = full_url.lower()
+                if any(k.lower() in low_href for k in keywords) and full_url not in SENT_CIRCULAR_LINKS:
+                    SENT_CIRCULAR_LINKS.add(full_url)
+                    alert_msg = f"AeRo Job Circular Alert:\n{full_url}"
+                    send_email_alert("AeRo Force Job Circular Alert", alert_msg)
+                    send_sms_alert(alert_msg)
+                    found_alerts.append(full_url)
+        except Exception as e:
+            print(f"Circular Check Error ({src_url}): {e}")
+
+    return found_alerts
+
+
+def circular_monitor_loop():
+    while command_worker_running:
+        try:
+            if CIRCULAR_SOURCES:
+                check_force_job_circulars()
+        except Exception as e:
+            print(f"Circular Monitor Loop Error: {e}")
+        time.sleep(1800)
+
+# ============================================================
 # STUDY HELPER & PDF GENERATOR
 # ============================================================
 def generate_study_pdf(topic, content):
@@ -211,6 +292,12 @@ def ask_ai_brain(prompt, system_prompt=""):
         low_p = (prompt or "").lower()
         if any(k in low_p for k in ["prayer", "namaz", "namazer somoy", "নামাজ"]):
             return get_prayer_times()
+
+        if any(k in low_p for k in ["circular", "সার্কুলার", "বাহিনী"]):
+            alerts = check_force_job_circulars()
+            if alerts:
+                return "নতুন সার্কুলার পাওয়া গেছে ও ইমেইল/SMS-এ পাঠানো হয়েছে:\n" + "\n".join(alerts)
+            return "সার্কুলার স্ক্যান সম্পন্ন হয়েছে। নতুন কোনো লিংক পাওয়া যায়নি বা CIRCULAR_SOURCES খালি।"
 
         api_key = os.environ.get("GEMINI_API_KEY", "").strip() or GEMINI_API_KEY
         if not GEMINI_SDK_AVAILABLE or google_genai is None:
@@ -1143,6 +1230,11 @@ if REMOTE_ACCESS_AVAILABLE:
         except Exception as e:
             return jsonify({"status": "error", "report": f"GPS Reverse Lookup Error: {str(e)}"})
 
+    @app.route("/check_circulars", methods=["GET", "POST"])
+    def check_circulars_route():
+        found = check_force_job_circulars()
+        return jsonify({"status": "success", "found": found})
+
     @app.errorhandler(500)
     def handle_500(e):
         return jsonify({"status": "error", "message": f"Internal Server Error: {e}"}), 500
@@ -1190,6 +1282,8 @@ if REMOTE_ACCESS_AVAILABLE:
 # ============================================================
 if __name__ == "__main__":
     print("Initializing AeRo Ai Quantum & Telemetry Terminal for Omar...")
+
+    threading.Thread(target=circular_monitor_loop, daemon=True).start()
 
     if DESKTOP_LIBS_AVAILABLE:
         threading.Thread(target=voice_listener_loop, daemon=True).start()
