@@ -13,7 +13,6 @@ import uuid
 import webbrowser
 from email.message import EmailMessage
 import requests
-import ollama
 import folium
 
 # Optional Gemini SDK (Fast Main Brain)
