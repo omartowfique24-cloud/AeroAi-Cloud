@@ -1016,10 +1016,6 @@ HTML_INTERFACE = """<!DOCTYPE html>
 if REMOTE_ACCESS_AVAILABLE:
     app = Flask(__name__)
 
-    @app.errorhandler(Exception)
-    def handle_any_exception(e):
-        return jsonify({"status": "error", "message": str(e)}), 500
-
     @app.after_request
     def add_cors_headers(response):
         response.headers["Access-Control-Allow-Origin"] = "*"
@@ -1147,20 +1143,33 @@ if REMOTE_ACCESS_AVAILABLE:
         except Exception as e:
             return jsonify({"status": "error", "report": f"GPS Reverse Lookup Error: {str(e)}"})
 
+    @app.errorhandler(500)
+    def handle_500(e):
+        return jsonify({"status": "error", "message": f"Internal Server Error: {e}"}), 500
+
     @app.route("/ask", methods=['POST', 'OPTIONS'])
     def phone_ask():
         if request.method == 'OPTIONS':
             return jsonify({"status": "ok"}), 200
         try:
-            data = request.get_json(silent=True) or request.form.to_dict()
-            query = data.get("query", "")
+            data = request.get_json(silent=True)
+            if not isinstance(data, dict):
+                data = request.form.to_dict() if request.form else {}
+            query = str(data.get("query", "") or "").strip()
             if not query:
-                return jsonify({"status": "error", "message": "No query provided"})
+                return jsonify({"status": "error", "message": "No query provided"}), 400
 
-            comm.update_subtitle.emit(f"Web: {query}")
+            try:
+                comm.update_subtitle.emit(f"Web: {query}")
+            except Exception:
+                pass
+
             is_safe, cleaned, threat_msg = scan_and_neutralize_threats(query)
             if not is_safe:
-                speak(threat_msg)
+                try:
+                    speak(threat_msg)
+                except Exception:
+                    pass
                 return jsonify({"status": "blocked", "reply": threat_msg})
 
             handled, _ = control_laptop(cleaned)
@@ -1168,7 +1177,10 @@ if REMOTE_ACCESS_AVAILABLE:
                 reply = "Command executed successfully, sir."
             else:
                 reply = ask_ai_brain(cleaned)
-                speak(reply)
+                try:
+                    speak(reply)
+                except Exception:
+                    pass
             return jsonify({"status": "success", "reply": reply})
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
