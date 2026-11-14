@@ -176,17 +176,16 @@ def get_prayer_times():
         "আজকের নামাজের সময়সূচি (রংপুর অঞ্চল):\n"
         "• ফজর: ৪:৪৮ AM | যোহর: ১২:৫৯ PM | আসর: ৪:৩৬ PM | মাগরিব: ৭:৩৬ PM | ইশা: ৯:০০ PM"
     )
-
 def _ask_gemini_fast(prompt, system_prompt):
-    api_key = os.environ.get("GEMINI_API_KEY", "").strip() or GEMINI_API_KEY
-    if not GEMINI_SDK_AVAILABLE or not api_key or google_genai is None:
-        return None
-    client = google_genai.Client(api_key=api_key)
-    resp = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=f"{system_prompt}\n\nUser: {prompt}",
-    )
-    return (getattr(resp, "text", None) or "").strip()
+  api_key = os.environ.get("GEMINI_API_KEY", "").strip() or GEMINI_API_KEY
+  if not GEMINI_SDK_AVAILABLE or not api_key or google_genai is None:
+    return None
+  client = google_genai.Client(api_key=api_key)
+  resp = client.models.generate_content(
+      model="gemini-3.8-flash",
+      contents=f"{system_prompt}\n\nUser: {prompt}",
+  )
+  return (getattr(resp, "text", None) or "").strip()
 
 def ask_ai_brain(prompt, system_prompt=""):
     try:
