@@ -15,7 +15,6 @@ from email.message import EmailMessage
 import requests
 import folium
 
-# Optional Gemini SDK (Fast Main Brain)
 try:
     from google import genai as google_genai
     GEMINI_SDK_AVAILABLE = True
@@ -31,7 +30,6 @@ except Exception:
     FPDF = None
     PDF_AVAILABLE = False
 
-# Safe Desktop Libraries Import
 try:
     import pyautogui
     import pyttsx3
@@ -40,21 +38,18 @@ try:
 except Exception:
     DESKTOP_LIBS_AVAILABLE = False
 
-# Flask Import
 try:
     from flask import Flask, request, jsonify, render_template_string, send_from_directory
     REMOTE_ACCESS_AVAILABLE = True
 except Exception:
     REMOTE_ACCESS_AVAILABLE = False
 
-# UTF-8 Output
 try:
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 except Exception:
     pass
 
-# PyQt5 Imports (Earth/Hologram HUD)
 try:
     from PyQt5.QtCore import QObject, Qt, pyqtSignal, QPoint, QTimer
     from PyQt5.QtGui import QColor, QFont, QPainter, QPen, QBrush
@@ -63,9 +58,6 @@ try:
 except Exception:
     PYQT_AVAILABLE = False
 
-# ============================================================
-# CONFIGURATION & SECURITY STATE (OMAR'S CREDENTIALS)
-# ============================================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "").strip()
 VOICE_TIMEOUT = 5
 VOICE_PHRASE_LIMIT = 8
@@ -78,10 +70,10 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 SECURITY_STATE = {
     "is_authenticated": True,
     "waiting_for_pin": False,
-    "secret_pin": "1259",
-    "user_phone": "01708323751",
-    "user_email": "omar.towfique.24@gmail.com",
-    "gmail_app_password": "your_gmail_app_password_here",
+    "secret_pin": os.environ.get("AERO_PIN", ""),
+    "user_phone": os.environ.get("AERO_ALERT_PHONE", "").strip(),
+    "user_email": os.environ.get("AERO_ALERT_EMAIL", "").strip(),
+    "gmail_app_password": "",
 }
 
 LAST_KNOWN_VILLAGE = {"name": None}
@@ -101,11 +93,7 @@ def scan_and_neutralize_threats(text_or_query):
             return False, cleaned, "Sir, a dangerous virus link was blocked by AeRo Antivirus!"
     return True, text_or_query, None
 
-# ============================================================
-# FORCE JOB CIRCULAR MONITOR (EMAIL + SMS GATEWAY)
-# ============================================================
 CIRCULAR_SOURCES = [
-    # এখানে সেনাবাহিনী, নৌবাহিনী ও বিমান বাহিনীর নির্ধারিত সার্কুলার পেজ URL বসাও
 ]
 
 SENT_CIRCULAR_LINKS = set()
@@ -182,9 +170,6 @@ def circular_monitor_loop():
             print(f"Circular Monitor Loop Error: {e}")
         time.sleep(1800)
 
-# ============================================================
-# STUDY HELPER & PDF GENERATOR
-# ============================================================
 def generate_study_pdf(topic, content):
     user_profile = os.environ.get("USERPROFILE", os.path.expanduser("~"))
     desktop_path = os.path.join(user_profile, "Desktop")
@@ -334,10 +319,7 @@ def ask_ai_brain(prompt, system_prompt=""):
         if "503" in str(e) or "UNAVAILABLE" in str(e):
             return "ওমর, Gemini সার্ভারে এখন সাময়িক চাপ আছে (503), কয়েক সেকেন্ড পর আবার পাঠাও।"
         return f"Gemini Error: {e}"
-
-# ============================================================
-# GLOBAL OBJECTS & TTS
-# ============================================================
+    
 command_worker_running = True
 tts_lock = threading.Lock()
 duplicate_lock = threading.Lock()
@@ -421,8 +403,11 @@ def control_laptop(query_text):
                 return True, None
             search_term = low_q.replace("close", "").strip()
             if search_term:
-                subprocess.Popen(f"taskkill /f /im {search_term}.exe", shell=True)
-                speak(f"Closed {search_term}, sir.")
+                if re.fullmatch(r"[a-zA-Z0-9_.-]{1,80}", search_term):
+                    subprocess.Popen(["taskkill", "/f", "/im", f"{search_term}.exe"], shell=False)
+                    speak(f"Close request sent for {search_term}, sir.")
+                else:
+                    speak("Invalid application name.")
             else:
                 pyautogui.hotkey("alt", "f4")
                 speak("Window closed, sir.")
@@ -537,112 +522,107 @@ def voice_listener_loop():
         except Exception:
             time.sleep(1)
 
-# ============================================================
-# EARTH & HOLOGRAM HUD (PyQt5)
-# ============================================================
-if PYQT_AVAILABLE:
-    class HologramHUD(QMainWindow):
-        def __init__(self):
-            super().__init__()
-            self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
-            self.setAttribute(Qt.WA_TranslucentBackground)
-            self.setGeometry(80, 80, 1000, 560)
-            self.angle = 0.0
+class HologramHUD(QMainWindow):
+    def __init__(self):
+        super().__init__()
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        self.setGeometry(80, 80, 1000, 560)
+        self.angle = 0.0
 
-            self.cmd_input = QLineEdit(self)
-            self.cmd_input.setGeometry(520, 90, 420, 48)
-            self.cmd_input.setPlaceholderText("Ask AeRo Terminal: Study PDF, or query...")
-            self.cmd_input.setStyleSheet(
-                "background-color: rgba(5, 15, 30, 245); color: #00f0ff; "
-                "border: 2px solid #ff007f; border-radius: 12px; padding: 10px; font-family: Consolas; font-size: 15px;"
-            )
-            self.cmd_input.returnPressed.connect(self.handle_typed_command)
+        self.cmd_input = QLineEdit(self)
+        self.cmd_input.setGeometry(520, 90, 420, 48)
+        self.cmd_input.setPlaceholderText("Ask AeRo Terminal: Study PDF, or query...")
+        self.cmd_input.setStyleSheet(
+            "background-color: rgba(5, 15, 30, 245); color: #00f0ff; "
+            "border: 2px solid #ff007f; border-radius: 12px; padding: 10px; font-family: Consolas; font-size: 15px;"
+        )
+        self.cmd_input.returnPressed.connect(self.handle_typed_command)
 
-            self.exec_btn = QPushButton("AERO EXECUTE", self)
-            self.exec_btn.setGeometry(520, 150, 420, 44)
-            self.exec_btn.setStyleSheet(
-                "QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff007f, stop:1 #00f0ff); "
-                "color: #000; font-weight: bold; border-radius: 12px; font-family: Consolas; font-size: 15px; }"
-                "QPushButton:hover { background: #00f0ff; }"
-            )
-            self.exec_btn.clicked.connect(self.handle_typed_command)
+        self.exec_btn = QPushButton("AERO EXECUTE", self)
+        self.exec_btn.setGeometry(520, 150, 420, 44)
+        self.exec_btn.setStyleSheet(
+            "QPushButton { background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #ff007f, stop:1 #00f0ff); "
+            "color: #000; font-weight: bold; border-radius: 12px; font-family: Consolas; font-size: 15px; }"
+            "QPushButton:hover { background: #00f0ff; }"
+        )
+        self.exec_btn.clicked.connect(self.handle_typed_command)
 
-            self.reply_label = QLabel("Welcome back, Omar sir. AeRo Telemetry Radar Online.", self)
-            self.reply_label.setGeometry(520, 210, 420, 300)
-            self.reply_label.setWordWrap(True)
-            self.reply_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
-            self.reply_label.setStyleSheet(
-                "background-color: rgba(0, 0, 0, 230); color: #39ff14; "
-                "border: 2px solid rgba(255, 0, 127, 200); border-radius: 14px; padding: 15px; font-family: Consolas; font-size: 14px;"
-            )
+        self.reply_label = QLabel("Welcome back, Omar sir. AeRo Telemetry Radar Online.", self)
+        self.reply_label.setGeometry(520, 210, 420, 300)
+        self.reply_label.setWordWrap(True)
+        self.reply_label.setAlignment(Qt.AlignTop | Qt.AlignLeft)
+        self.reply_label.setStyleSheet(
+            "background-color: rgba(0, 0, 0, 230); color: #39ff14; "
+            "border: 2px solid rgba(255, 0, 127, 200); border-radius: 14px; padding: 15px; font-family: Consolas; font-size: 14px;"
+        )
 
-            self.timer = QTimer(self)
-            self.timer.timeout.connect(self.update_animation)
-            self.timer.start(1000)
-            comm.update_subtitle.connect(self.reply_label.setText)
-            self.drag_position = QPoint()
-            speak("Welcome back, Omar sir. AeRo radar telemetry system is online.")
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_animation)
+        self.timer.start(1000)
+        comm.update_subtitle.connect(self.reply_label.setText)
+        self.drag_position = QPoint()
+        speak("Welcome back, Omar sir. AeRo radar telemetry system is online.")
 
-        def handle_typed_command(self):
-            text = self.cmd_input.text().strip()
-            if not text:
-                return
-            self.cmd_input.clear()
-            self.reply_label.setText(f"Omar: {text}")
-            threading.Thread(target=self.process_text_command, args=(text,), daemon=True).start()
+    def handle_typed_command(self):
+        text = self.cmd_input.text().strip()
+        if not text:
+            return
+        self.cmd_input.clear()
+        self.reply_label.setText(f"Omar: {text}")
+        threading.Thread(target=self.process_text_command, args=(text,), daemon=True).start()
 
-        def process_text_command(self, query):
-            is_safe, cleaned, threat_msg = scan_and_neutralize_threats(query)
-            if not is_safe:
-                speak(threat_msg)
-                return
-            handled, _ = control_laptop(cleaned)
-            if not handled:
-                speak(ask_ai_brain(cleaned))
+    def process_text_command(self, query):
+        is_safe, cleaned, threat_msg = scan_and_neutralize_threats(query)
+        if not is_safe:
+            speak(threat_msg)
+            return
+        handled, _ = control_laptop(cleaned)
+        if not handled:
+            speak(ask_ai_brain(cleaned))
 
-        def update_animation(self):
-            self.angle = (self.angle + 6.0) % 360
-            self.update()
+    def update_animation(self):
+        self.angle = (self.angle + 6.0) % 360
+        self.update()
 
-        def mousePressEvent(self, event):
-            if event.button() == Qt.LeftButton:
-                self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.drag_position = event.globalPos() - self.frameGeometry().topLeft()
 
-        def mouseMoveEvent(self, event):
-            if event.buttons() == Qt.LeftButton:
-                self.move(event.globalPos() - self.drag_position)
+    def mouseMoveEvent(self, event):
+        if event.buttons() == Qt.LeftButton:
+            self.move(event.globalPos() - self.drag_position)
 
-        def paintEvent(self, event):
-            painter = QPainter(self)
-            painter.setRenderHint(QPainter.Antialiasing)
-            cx, cy = 250, 280
-            center = QPoint(cx, cy)
-            painter.setPen(QPen(QColor(0, 240, 255, 120), 1.5, Qt.DashLine))
-            painter.drawEllipse(center, 210, 210)
-            painter.setPen(QPen(QColor(0, 240, 255, 180), 2))
-            painter.drawEllipse(center, 180, 180)
-            rad = math.radians(self.angle)
-            painter.setBrush(QBrush(QColor(255, 0, 127)))
-            painter.drawEllipse(QPoint(cx + int(180 * math.cos(rad)), cy + int(180 * math.sin(rad))), 6, 6)
-            painter.setPen(QPen(QColor(255, 0, 127, 200), 2))
-            painter.drawEllipse(center, 140, 140)
+    def paintEvent(self, event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing)
+        cx, cy = 250, 280
+        center = QPoint(cx, cy)
+        painter.setPen(QPen(QColor(0, 240, 255, 120), 1.5, Qt.DashLine))
+        painter.drawEllipse(center, 210, 210)
+        painter.setPen(QPen(QColor(0, 240, 255, 180), 2))
+        painter.drawEllipse(center, 180, 180)
+        rad = math.radians(self.angle)
+        painter.setBrush(QBrush(QColor(255, 0, 127)))
+        painter.drawEllipse(QPoint(cx + int(180 * math.cos(rad)), cy + int(180 * math.sin(rad))), 6, 6)
+        painter.setPen(QPen(QColor(255, 0, 127, 200), 2))
+        painter.drawEllipse(center, 140, 140)
 
-            now = datetime.datetime.now()
-            date_str = now.strftime("%d %b %Y").upper()
-            time_str = now.strftime("%H:%M:%S")
+        now = datetime.datetime.now()
+        date_str = now.strftime("%d %b %Y").upper()
+        time_str = now.strftime("%H:%M:%S")
 
-            painter.setFont(QFont("Consolas", 10, QFont.Bold))
-            painter.setPen(QColor(0, 240, 255))
-            painter.drawText(cx + 180, cy - 90, "AERO RADAR: SECURE")
-            painter.drawText(cx + 180, cy + 80, "TEMP: 28°C")
+        painter.setFont(QFont("Consolas", 10, QFont.Bold))
+        painter.setPen(QColor(0, 240, 255))
+        painter.drawText(cx + 180, cy - 90, "AERO RADAR: SECURE")
+        painter.drawText(cx + 180, cy + 80, "TEMP: 28°C")
 
-            painter.setPen(QColor(255, 0, 127))
-            painter.drawText(cx - 235, cy - 90, date_str)
-            painter.drawText(cx - 235, cy + 80, time_str)
+        painter.setPen(QColor(255, 0, 127))
+        painter.drawText(cx - 235, cy - 90, date_str)
+        painter.drawText(cx - 235, cy + 80, time_str)
 
-# ============================================================
-# WEB INTERFACE (ORGANIZED DARK UI, MEDIA UPLOAD & OPT-IN GPS)
-# ============================================================
+
+
 HTML_INTERFACE = """<!DOCTYPE html>
 <html>
 <head>
@@ -693,14 +673,52 @@ HTML_INTERFACE = """<!DOCTYPE html>
         .devices-box { background: #0b141a; border: 1px solid #222d34; border-radius: 10px; padding: 8px; font-size: 12px; max-height: 110px; overflow-y: auto; color: #d1d7db; }
         .device-row { padding: 4px 0; border-bottom: 1px dashed #222d34; }
 
+        /* Phone/tablet layout: keep every panel inside the viewport */
+        html { width: 100%; min-width: 0; }
+        body { width: 100%; max-width: 100vw; overflow-x: hidden; }
+        .app-container, .main-workspace, .workspace, .chat-card, .control-panel { min-width: 0; }
+        .logo-mark { display:flex; align-items:center; justify-content:center; background:linear-gradient(145deg,#00a884,#0877a8); color:#06151b; font-size:22px; font-weight:900; text-shadow:none; }
         @media (max-width: 768px) {
-            body { padding: 6px; align-items: flex-start; }
-            .app-container { flex-direction: column; height: auto; width: 100%; }
+            body { padding: 6px; align-items: flex-start; min-height: 100dvh; }
+            .app-container { flex-direction: column; height: auto; min-height: 0; width: 100%; gap: 8px; }
+            .sidebar { width: 100%; max-height: 180px; padding: 10px; }
+            .history-list { max-height: 78px; }
             .sidebar, .control-panel, .main-workspace, .chat-card { width: 100%; }
-            .header-card { flex-direction: column; align-items: flex-start; gap: 8px; }
-            .telemetry-bar { flex-wrap: wrap; }
-            .workspace { flex-direction: column; }
-            #log { min-height: 260px; max-height: 360px; }
+            .main-workspace { gap: 8px; }
+            .header-card { flex-direction: row; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px; }
+            .logo-area { gap: 9px; }
+            .logo-img { width: 42px; height: 42px; flex: 0 0 42px; }
+            .logo-text-group h1 { font-size: 20px; }
+            .logo-text-group p { font-size: 9px; letter-spacing: 1.2px; }
+            .telemetry-bar { flex-wrap: wrap; gap: 5px; width: 100%; }
+            .tele-badge { padding: 5px 7px; font-size: 11px; }
+            .workspace { flex-direction: column; gap: 8px; }
+            .chat-card { padding: 9px; min-height: 0; }
+            #log { min-height: 240px; max-height: 42vh; font-size: 13px; padding: 8px; }
+            .log-msg { max-width: 100%; font-size: 14px; overflow-wrap: anywhere; }
+            .aero-search-container { gap: 7px; padding: 6px; flex-wrap: nowrap; }
+            .upload-btn { flex: 0 0 92px; min-height: 44px; padding: 6px; font-size: 11px; }
+            .aero-search-input { min-width: 0; width: 0; font-size: 14px; }
+            .btn-grid { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 7px; }
+            .btn-grid button { min-height: 48px; font-size: 12px; padding: 9px 5px; }
+            .control-panel { padding: 10px; gap: 8px; }
+            .panel-title { font-size: 13px; overflow-wrap: anywhere; }
+            .osint-input-group { gap: 5px; }
+            .osint-input { min-width: 0; font-size: 14px; min-height: 42px; }
+            .osint-input-group button { min-height: 42px; white-space: nowrap; }
+            .media-preview { min-height: 170px; }
+            .devices-box { max-height: 140px; }
+            .control-panel > button { min-height: 44px; }
+        }
+        @media (max-width: 380px) {
+            .header-card { flex-direction: column; align-items: flex-start; }
+            .btn-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+            .upload-btn { flex-basis: 82px; }
+            .logo-text-group p { letter-spacing: .8px; }
+        }
+        @media (min-width: 769px) and (max-width: 1100px) {
+            .app-container { width: 100%; }
+            .control-panel { width: 300px; }
         }
     </style>
 </head>
@@ -722,7 +740,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
         <div class="main-workspace">
             <div class="header-card">
                 <div class="logo-area">
-                    <img src="https://i.ibb.co.com/83p1Xb1/image-2a4080.png" alt="Logo" class="logo-img">
+                    <div class="logo-img logo-mark" aria-label="AeRo logo">A</div>
                     <div class="logo-text-group">
                         <h1>AeRo Ai</h1>
                         <p>QUANTUM PERSONAL ASSISTANT</p>
@@ -777,6 +795,12 @@ HTML_INTERFACE = """<!DOCTYPE html>
     </div>
 
     <script>
+        function escapeHtml(value) {
+            return String(value ?? "").replace(/[&<>"']/g, ch => ({
+                "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;"
+            }[ch]));
+        }
+
         let currentDeviceId = localStorage.getItem("aero_device_id");
         if (!currentDeviceId) {
             currentDeviceId = "Device-" + Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -841,8 +865,8 @@ HTML_INTERFACE = """<!DOCTYPE html>
                     }
                     box.innerHTML = list.map(d => `
                         <div class="device-row">
-                            <strong style="color:#00a884;">${d.device_id}</strong> [${d.battery}]<br>
-                            Lat: ${d.lat}, Lon: ${d.lon} (${d.last_seen})
+                            <strong style="color:#00a884;">${escapeHtml(d.device_id)}</strong> [${escapeHtml(d.battery)}]<br>
+                            Lat: ${escapeHtml(d.lat)}, Lon: ${escapeHtml(d.lon)} (${escapeHtml(d.last_seen)})
                         </div>
                     `).join("");
                 })
@@ -864,17 +888,17 @@ HTML_INTERFACE = """<!DOCTYPE html>
             const formData = new FormData();
             formData.append("file", file);
 
-            log.innerHTML += `<div class="log-msg user-msg">>> Uploading media: ${file.name}</div>`;
+            log.innerHTML += `<div class="log-msg user-msg">>> Uploading media: ${escapeHtml(file.name)}</div>`;
             try {
                 const res = await fetch("/upload_media", { method: "POST", body: formData });
                 const data = await res.json();
                 if (data.status === "success") {
                     if (data.type === "video") {
                         preview.innerHTML = `<video src="${data.url}" controls autoplay loop style="width:100%; height:100%; object-fit:cover; border-radius:8px;"></video>`;
-                        log.innerHTML += `<div class="log-msg ai-msg">> Video uploaded: ${file.name}</div>`;
+                        log.innerHTML += `<div class="log-msg ai-msg">> Video uploaded: ${escapeHtml(file.name)}</div>`;
                     } else {
                         preview.innerHTML = `<img src="${data.url}" style="width:100%; height:100%; object-fit:cover; border-radius:8px;">`;
-                        log.innerHTML += `<div class="log-msg ai-msg">> Image uploaded: ${file.name}</div>`;
+                        log.innerHTML += `<div class="log-msg ai-msg">> Image uploaded: ${escapeHtml(file.name)}</div>`;
                     }
                     saveToHistory("Media: " + file.name);
                 } else {
@@ -973,7 +997,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
             })
             .then(r => r.json())
             .then(d => {
-                log.innerHTML += `<div class="log-msg ai-msg">> ${d.result}</div>`;
+                log.innerHTML += `<div class="log-msg ai-msg">> ${escapeHtml(d.result)}</div>`;
                 log.scrollTop = log.scrollHeight;
             });
         }
@@ -1017,7 +1041,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
             if (!prompt) return;
             document.getElementById("media-output").innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:5px; height:100%; justify-content:center; align-items:center;">
-                    <div style="color:#00a884; font-size:12px;">🖼️ Generating: "${prompt}"</div>
+                    <div style="color:#00a884; font-size:12px;">🖼️ Generating: "${escapeHtml(prompt)}"</div>
                     <img src="https://picsum.photos/300/150?random=${Math.random()}" style="width:100%; height:130px; object-fit:cover; border-radius:8px;">
                 </div>`;
             saveToHistory("Gen Pic: " + prompt);
@@ -1028,7 +1052,7 @@ HTML_INTERFACE = """<!DOCTYPE html>
             if (!prompt) return;
             document.getElementById("media-output").innerHTML = `
                 <div style="display:flex; flex-direction:column; gap:5px; height:100%; justify-content:center; align-items:center;">
-                    <div style="color:#00a884; font-size:12px;">🎬 Rendering Video: "${prompt}"</div>
+                    <div style="color:#00a884; font-size:12px;">🎬 Rendering Video: "${escapeHtml(prompt)}"</div>
                     <div style="background:#1d2b33; padding:14px; border-radius:8px; color:#39ff14; font-size:12px;">Video Stream Active & Rendered Successfully!</div>
                 </div>`;
             saveToHistory("Gen Video: " + prompt);
@@ -1102,12 +1126,10 @@ HTML_INTERFACE = """<!DOCTYPE html>
 
 if REMOTE_ACCESS_AVAILABLE:
     app = Flask(__name__)
+    app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
 
     @app.after_request
     def add_cors_headers(response):
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Accept"
-        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
         return response
 
     @app.route("/")
@@ -1125,6 +1147,8 @@ if REMOTE_ACCESS_AVAILABLE:
         f = request.files["file"]
         if not f.filename:
             return jsonify({"status": "error", "message": "Empty filename"}), 400
+        if f.content_length and f.content_length > 8 * 1024 * 1024:
+            return jsonify({"status": "error", "message": "File exceeds 8 MB limit"}), 413
         ext = os.path.splitext(f.filename)[1].lower()
         allowed_img = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
         allowed_vid = {".mp4", ".webm", ".mov", ".mkv"}
@@ -1179,6 +1203,8 @@ if REMOTE_ACCESS_AVAILABLE:
         lat = float(request.args.get('lat', LATEST_DEVICE_COORDS["lat"]))
         lon = float(request.args.get('lon', LATEST_DEVICE_COORDS["lon"]))
         zoom = int(request.args.get('zoom', 16))
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180 and 1 <= zoom <= 20):
+            return jsonify({"status": "error", "message": "Invalid map coordinates or zoom"}), 400
 
         m = folium.Map(
             location=[lat, lon],
@@ -1277,9 +1303,6 @@ if REMOTE_ACCESS_AVAILABLE:
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
-# ============================================================
-# MAIN EXECUTION
-# ============================================================
 if __name__ == "__main__":
     print("Initializing AeRo Ai Quantum & Telemetry Terminal for Omar...")
 
@@ -1291,7 +1314,7 @@ if __name__ == "__main__":
     if REMOTE_ACCESS_AVAILABLE:
         port = int(os.environ.get("PORT", "5000"))
         threading.Thread(
-            target=lambda: app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False, threaded=True),
+            target=lambda: app.run(host=os.environ.get("AERO_BIND_HOST", "127.0.0.1"), port=port, debug=False, use_reloader=False, threaded=True),
             daemon=True
         ).start()
         print(f"AeRo Web Server running at http://0.0.0.0:{port}")
