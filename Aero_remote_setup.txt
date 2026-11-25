@@ -1,0 +1,35 @@
+AERO PHONE -> PC REMOTE BRIDGE SETUP
+
+1) Render: Settings > Build & Deploy
+   Build Command: pip install -r requirements.txt
+   Start Command: python AeroAi.py
+
+2) Render Environment variables:
+   AERO_REMOTE_TOKEN = (choose a long random secret token)
+   GEMINI_API_KEY = (your Gemini API key)
+   OLLAMA_MODEL = llama3 (optional)
+
+3) PC Environment variables (Windows):
+   AERO_REMOTE_TOKEN = (same exact token as Render)
+   AERO_CLOUD_URL = https://YOUR-RENDER-SERVICE.onrender.com
+   AERO_PC_AGENT = 1
+   OLLAMA_MODEL = llama3 (optional)
+
+4) On PC, install Ollama, then run in CMD:
+   ollama pull llama3
+   ollama serve
+
+5) Run AeroAi.py on the PC. Keep the PC on, online, and Aero running.
+   The PC agent polls the Render relay. Do not use AERO_REMOTE_TOKEN in public.
+
+6) Open the Render Aero URL from your phone. When you issue one of the supported
+   PC commands, Aero will prompt for the token once and store it in this browser.
+
+   Supported relayed commands: open YouTube/Google/WhatsApp/Instagram/Facebook/
+   Spotify/Telegram/GitHub/Netflix, volume up/down, and screenshot.
+   Commands are allowlisted; arbitrary shell commands are not relayed.
+
+
+NOTE: This bridge uses Render's in-memory queue. Render may sleep on free tier;
+commands can wait until it wakes. Integration tests require both the Render service
+and the PC to be online; compile checks alone do not prove live relay operation.

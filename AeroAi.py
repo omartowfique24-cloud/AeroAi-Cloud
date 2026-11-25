@@ -4,6 +4,7 @@ import io
 import math
 import os
 import re
+import secrets
 import smtplib
 import subprocess
 import sys
@@ -14,6 +15,14 @@ import webbrowser
 from email.message import EmailMessage
 import requests
 import folium
+
+# Optional local AI engine (Ollama). It is available on the PC when Ollama# is installed and running; cloud deployment may use OLLAMA_HOST if configured.
+try:
+    import ollama
+    OLLAMA_SDK_AVAILABLE = True
+except Exception:
+    ollama = None
+    OLLAMA_SDK_AVAILABLE = False
 
 try:
     from google import genai as google_genai
@@ -272,6 +281,32 @@ def _ask_gemini_fast(prompt, system_prompt):
         raise last_err
     return None
 
+def _ask_ollama(prompt, system_prompt=""):
+    """Query Ollama when reachable; defaults to the local PC's Ollama service."""
+    if not OLLAMA_SDK_AVAILABLE or ollama is None:
+        return None
+    # Render is a cloud host; localhost there is not the user's PC.
+    if os.environ.get("RENDER") and not os.environ.get("OLLAMA_HOST"):
+        return None
+    host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
+    model = os.environ.get("OLLAMA_MODEL", "llama3")
+    persona = system_prompt or (
+        "You are AeRo Ai, a helpful assistant. Understand Bengali, English, and Banglish. "
+        "Answer clearly and concisely."
+    )
+    try:
+        client = ollama.Client(host=host, timeout=30)
+        response = client.chat(model=model, messages=[
+            {"role": "system", "content": persona},
+            {"role": "user", "content": prompt},
+        ])
+        content = response.get("message", {}).get("content", "")
+        return content.strip() or None
+    except Exception as exc:
+        print(f"Ollama unavailable ({host}, model={model}): {exc}")
+        return None
+
+
 def ask_ai_brain(prompt, system_prompt=""):
     try:
         low_p = (prompt or "").lower()
@@ -310,6 +345,13 @@ def ask_ai_brain(prompt, system_prompt=""):
             "You are AeRo Ai, Omar's ultra-fast AI assistant. Reply instantly in 1-2 short sentences in Bengali, English, or Banglish."
         )
         sys_instruction = system_prompt or default_persona
+
+
+        # Desktop/local mode prefers Ollama. Render/cloud falls back to Gemini,
+        # unless a remotely reachable Ollama endpoint is explicitly configured.
+        local_reply = _ask_ollama(prompt, sys_instruction)
+        if local_reply:
+            return local_reply
 
         gem_reply = _ask_gemini_fast(prompt, sys_instruction)
         if gem_reply:
@@ -711,7 +753,14 @@ HTML_INTERFACE = """<!DOCTYPE html>
             .control-panel > button { min-height: 44px; }
         }
         @media (max-width: 380px) {
+            body, .app-container, .main-workspace, .workspace, .chat-card, .control-panel { overflow-x: clip; }
+            .header-card, .aero-search-container, .osint-input-group { max-width: 100%; }
             .header-card { flex-direction: column; align-items: flex-start; }
+            .telemetry-bar { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .tele-badge { min-width: 0; text-align: center; overflow-wrap: anywhere; }
+            .aero-search-input { flex: 1 1 auto; min-width: 0; }
+            .osint-input-group { display: flex; }
+            .osint-input-group button { flex: 0 0 auto; }
             .btn-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
             .upload-btn { flex-basis: 82px; }
             .logo-text-group p { letter-spacing: .8px; }
@@ -963,9 +1012,15 @@ HTML_INTERFACE = """<!DOCTYPE html>
             log.scrollTop = log.scrollHeight;
 
             try {
+                const remoteIntent = /\b(open youtube|open google|open whatsapp|open instagram|open facebook|open spotify|open telegram|open github|open netflix|volume up|volume down|screenshot)\b|khulo|kholo|barhao|komao|screenshot nao/i.test(text);
+                let remoteToken = localStorage.getItem("aero_remote_token") || "";
+                if (remoteIntent && !remoteToken) {
+                    remoteToken = prompt("Enter your paired Aero remote-control token (configured as AERO_REMOTE_TOKEN on Render and your PC):") || "";
+                    if (remoteToken) localStorage.setItem("aero_remote_token", remoteToken);
+                }
                 const res = await fetch("/ask", {
                     method: "POST",
-                    headers: { "Content-Type": "application/json" },
+                    headers: { "Content-Type": "application/json", ...(remoteToken ? { "X-Aero-Token": remoteToken } : {}) },
                     body: JSON.stringify({ query: text })
                 });
                 const rawText = await res.text();
@@ -1124,9 +1179,82 @@ HTML_INTERFACE = """<!DOCTYPE html>
 </html>
 """
 
+# Secure Render <-> user's PC bridge. The PC polls Render; Render never executes desktop commands itself.
+PC_BRIDGE_QUEUE = []
+PC_BRIDGE_RESULTS = {}
+PC_BRIDGE_LOCK = threading.Lock()
+PC_BRIDGE_TOKEN = os.environ.get("AERO_REMOTE_TOKEN", "").strip()
+PC_BRIDGE_ACTIONS = {
+    "open youtube": "open youtube", "open google": "open google", "open whatsapp": "open whatsapp",
+    "open instagram": "open instagram", "open facebook": "open facebook", "open spotify": "open spotify",
+    "open telegram": "open telegram", "open github": "open github", "open netflix": "open netflix",
+    "volume up": "volume up", "volume down": "volume down", "screenshot": "screenshot",
+}
+
+def _bridge_auth_ok():
+    if not PC_BRIDGE_TOKEN:
+        return False
+    supplied = request.headers.get("X-Aero-Token", "")
+    return bool(supplied) and secrets.compare_digest(supplied, PC_BRIDGE_TOKEN)
+
+def _classify_remote_pc_action(query):
+    q = re.sub(r"\s+", " ", (query or "").strip().lower())
+    # Only intentionally narrow, known actions are relayed to the paired PC.
+    aliases = {
+        "open youtube": ("open youtube", "youtube khulo", "youtube kholo"),
+        "open google": ("open google", "google khulo", "google kholo"),
+        "open whatsapp": ("open whatsapp", "whatsapp khulo", "whatsapp kholo"),
+        "open instagram": ("open instagram", "instagram khulo", "instagram kholo"),
+        "open facebook": ("open facebook", "facebook khulo", "facebook kholo"),
+        "open spotify": ("open spotify", "spotify khulo", "spotify kholo"),
+        "open telegram": ("open telegram", "telegram khulo", "telegram kholo"),
+        "open github": ("open github", "github khulo", "github kholo"),
+        "open netflix": ("open netflix", "netflix khulo", "netflix kholo"),
+        "volume up": ("volume up", "volume barhao", "sound barhao"),
+        "volume down": ("volume down", "volume komao", "sound komao"),
+        "screenshot": ("take screenshot", "screenshot nao", "screenshot"),
+    }
+    for action, phrases in aliases.items():
+        if any(phrase in q for phrase in phrases):
+            return action
+    return None
+
+
 if REMOTE_ACCESS_AVAILABLE:
     app = Flask(__name__)
     app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
+
+
+    @app.route("/pc/next", methods=["GET"])
+    def pc_bridge_next():
+        if not _bridge_auth_ok():
+            return jsonify({"status":"unauthorized"}), 401
+        with PC_BRIDGE_LOCK:
+            if PC_BRIDGE_QUEUE:
+                task = PC_BRIDGE_QUEUE.pop(0)
+                return jsonify({"status":"task", "task":task})
+        return jsonify({"status":"idle"})
+
+
+
+    @app.route("/pc/result", methods=["POST"])
+    def pc_bridge_result():
+        if not _bridge_auth_ok():
+            return jsonify({"status":"unauthorized"}), 401
+        data=request.get_json(silent=True) or {}
+        task_id=str(data.get("task_id", ""))
+        if not task_id or len(task_id)>80:
+            return jsonify({"status":"error"}),400
+        with PC_BRIDGE_LOCK:
+            PC_BRIDGE_RESULTS[task_id]=str(data.get("result", "PC task completed"))[:500]
+        return jsonify({"status":"ok"})
+
+
+    @app.route("/pc/status", methods=["GET"])
+    def pc_bridge_status():
+        if not _bridge_auth_ok():
+            return jsonify({"status":"unauthorized"}), 401
+        return jsonify({"status":"online"})
 
     @app.after_request
     def add_cors_headers(response):
@@ -1290,11 +1418,30 @@ if REMOTE_ACCESS_AVAILABLE:
                     pass
                 return jsonify({"status": "blocked", "reply": threat_msg})
 
-            handled, _ = control_laptop(cleaned)
-            if handled:
-                reply = "Command executed successfully, sir."
+            remote_action = _classify_remote_pc_action(cleaned)
+            if remote_action:
+                if not _bridge_auth_ok():
+                    return jsonify({"status":"unauthorized", "reply":"Remote PC control is locked. Set and enter your AERO_REMOTE_TOKEN to authorize paired-PC commands."}), 401
+                task_id = uuid.uuid4().hex
+                with PC_BRIDGE_LOCK:
+                    PC_BRIDGE_QUEUE.append({"id":task_id, "action":remote_action, "created":time.time()})
+                # Allow a short wait for the paired PC; otherwise report that the command is queued.
+                deadline=time.time()+12
+                result=None
+                while time.time()<deadline:
+                    with PC_BRIDGE_LOCK:
+                        result=PC_BRIDGE_RESULTS.pop(task_id, None)
+                    if result is not None:
+                        break
+                    time.sleep(0.25)
+                reply = result or "Command queued. The paired PC must be online with Aero PC Agent running."
+                handled=True
             else:
-                reply = ask_ai_brain(cleaned)
+                handled, _ = control_laptop(cleaned)
+                if handled:
+                    reply = "Command executed successfully, sir."
+                else:
+                    reply = ask_ai_brain(cleaned)
                 try:
                     speak(reply)
                 except Exception:
@@ -1303,10 +1450,62 @@ if REMOTE_ACCESS_AVAILABLE:
         except Exception as e:
             return jsonify({"status": "error", "message": str(e)}), 500
 
+def aero_pc_agent_loop():
+    cloud_url=os.environ.get("AERO_CLOUD_URL", "").strip().rstrip("/")
+    token=os.environ.get("AERO_REMOTE_TOKEN", "").strip()
+    if not cloud_url or not token:
+        print("Aero PC Agent disabled: set AERO_CLOUD_URL and AERO_REMOTE_TOKEN")
+        return
+    safe_actions={
+        "open youtube":"open youtube", "open google":"open google", "open whatsapp":"open whatsapp",
+        "open instagram":"open instagram", "open facebook":"open facebook", "open spotify":"open spotify",
+        "open telegram":"open telegram", "open github":"open github", "open netflix":"open netflix",
+        "volume up":"volume up", "volume down":"volume down", "screenshot":"screenshot",
+    }
+    headers={"X-Aero-Token":token}
+    print("Aero PC Agent polling Render relay (restricted action allowlist)")
+    while True:
+        try:
+            response=requests.get(cloud_url+"/pc/next", headers=headers, timeout=10)
+            if response.status_code==200:
+                payload=response.json()
+                task=payload.get("task")
+                if task:
+                    action=task.get("action", "")
+                    result="Rejected: action not permitted"
+                    if action in safe_actions:
+                        # execute only predefined actions; never run arbitrary shell commands from relay
+                        if action.startswith("open "):
+                            site=action.split(" ",1)[1]
+                            url=WEBSITES_MAP.get(site)
+                            if url:
+                                webbrowser.open(url); result=f"Opened {site} on paired PC"
+                        elif action=="volume up":
+                            if DESKTOP_LIBS_AVAILABLE: pyautogui.press("volumeup", presses=3, interval=0.08)
+                            result="Volume increased on paired PC"
+                        elif action=="volume down":
+                            if DESKTOP_LIBS_AVAILABLE: pyautogui.press("volumedown", presses=3, interval=0.08)
+                            result="Volume decreased on paired PC"
+                        elif action=="screenshot":
+                            if DESKTOP_LIBS_AVAILABLE:
+                                path=os.path.join(os.path.expanduser("~"),"Desktop","Aero_remote_screenshot.png")
+                                pyautogui.screenshot(path); result="Screenshot saved to paired PC desktop"
+                            else: result="Screenshot unavailable: desktop tools not installed"
+                    try:
+                        requests.post(cloud_url+"/pc/result", headers=headers, json={"task_id":task.get("id",""),"result":result}, timeout=10)
+                    except Exception as e: print("PC relay result error:",e)
+            time.sleep(2.0)
+        except Exception as e:
+            print("PC relay poll error:",e)
+            time.sleep(5)
+
 if __name__ == "__main__":
     print("Initializing AeRo Ai Quantum & Telemetry Terminal for Omar...")
 
     threading.Thread(target=circular_monitor_loop, daemon=True).start()
+
+    if os.environ.get("AERO_PC_AGENT", "0").strip() == "1":
+        threading.Thread(target=aero_pc_agent_loop, daemon=True).start()
 
     if DESKTOP_LIBS_AVAILABLE:
         threading.Thread(target=voice_listener_loop, daemon=True).start()
@@ -1314,7 +1513,7 @@ if __name__ == "__main__":
     if REMOTE_ACCESS_AVAILABLE:
         port = int(os.environ.get("PORT", "5000"))
         threading.Thread(
-            target=lambda: app.run(host=os.environ.get("AERO_BIND_HOST", "127.0.0.1"), port=port, debug=False, use_reloader=False, threaded=True),
+            target=lambda: app.run(host=os.environ.get("AERO_BIND_HOST", "0.0.0.0" if os.environ.get("RENDER") else "127.0.0.1"), port=port, debug=False, use_reloader=False, threaded=True),
             daemon=True
         ).start()
         print(f"AeRo Web Server running at http://0.0.0.0:{port}")
